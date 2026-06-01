@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Air Alert Map | Тревоги РФ</title>
+<title>Air Alert Map - Границы регионов РФ</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
     * {
@@ -11,87 +11,114 @@
         padding: 0;
         box-sizing: border-box;
     }
+
     body {
         background: #0a0e1a;
-        font-family: 'Segoe UI', 'Roboto', sans-serif;
+        font-family: 'Segoe UI', 'Roboto', 'Arial', sans-serif;
         overflow: hidden;
     }
+
     .clock {
         position: fixed;
         top: 20px;
         right: 20px;
         z-index: 2000;
-        background: rgba(10, 14, 26, 0.85);
+        background: rgba(10, 14, 26, 0.9);
         backdrop-filter: blur(8px);
         border-radius: 20px;
         padding: 10px 20px;
         color: #e8eef2;
-        font-family: monospace;
+        font-family: 'JetBrains Mono', monospace;
         text-align: center;
         border: 1px solid rgba(255,255,255,0.15);
-        pointer-events: none;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
     }
-    .time-main { font-size: 2rem; font-weight: 600; line-height: 1; }
-    .date { font-size: 0.7rem; opacity: 0.7; margin-top: 5px; text-transform: uppercase; }
+
+    .time-main {
+        font-size: 2rem;
+        font-weight: 600;
+        line-height: 1;
+    }
+
+    .date {
+        font-size: 0.7rem;
+        opacity: 0.7;
+        margin-top: 5px;
+        text-transform: uppercase;
+    }
+
     .legend {
         position: fixed;
         bottom: 20px;
         left: 20px;
         z-index: 2000;
-        background: rgba(10, 14, 26, 0.85);
+        background: rgba(10, 14, 26, 0.9);
         backdrop-filter: blur(8px);
         border-radius: 12px;
         padding: 12px 18px;
         color: #e8eef2;
         font-size: 0.8rem;
+        border: 1px solid rgba(255,255,255,0.1);
         display: flex;
         flex-direction: column;
         gap: 8px;
         pointer-events: none;
-        font-weight: 500;
     }
-    .legend-item { display: flex; align-items: center; gap: 10px; }
-    .legend-color { width: 28px; height: 18px; border-radius: 4px; }
-    .status-badge {
-        position: fixed;
-        bottom: 20px;
-        right: 20px;
-        z-index: 2000;
-        background: rgba(0,0,0,0.7);
-        border-radius: 30px;
-        padding: 5px 12px;
-        color: #88ff88;
-        font-size: 0.7rem;
-        font-family: monospace;
-        pointer-events: none;
+
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
     }
-    .leaflet-control-attribution { display: none !important; }
+
+    .legend-color {
+        width: 28px;
+        height: 18px;
+        border-radius: 4px;
+    }
+
+    .custom-popup .leaflet-popup-content-wrapper {
+        background: #1a1f2e;
+        color: #e8eef2;
+        border-radius: 12px;
+        border-left: 4px solid;
+    }
+
+    .leaflet-control-attribution {
+        display: none !important;
+    }
+
     .loader {
         position: fixed;
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
         z-index: 3000;
-        background: rgba(0,0,0,0.92);
+        background: rgba(0,0,0,0.95);
         padding: 20px 30px;
-        border-radius: 16px;
+        border-radius: 12px;
         color: white;
+        text-align: center;
+        font-family: monospace;
+        border: 1px solid rgba(255,255,255,0.2);
         display: flex;
         align-items: center;
-        gap: 14px;
-        font-family: monospace;
-        backdrop-filter: blur(4px);
-        border: 1px solid rgba(255,255,255,0.2);
+        gap: 12px;
     }
+
     .loader-spinner {
         width: 20px;
         height: 20px;
         border: 2px solid rgba(255,255,255,0.3);
         border-radius: 50%;
         border-top-color: #fff;
-        animation: spin 0.7s linear infinite;
+        animation: spin 0.8s linear infinite;
     }
-    @keyframes spin { to { transform: rotate(360deg); } }
+
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
     @media (max-width: 600px) {
         .time-main { font-size: 1.2rem; }
         .clock { padding: 5px 12px; top: 10px; right: 10px; }
@@ -101,83 +128,118 @@
 </style>
 </head>
 <body>
-<div class="clock"><div class="time-main" id="liveTime">--:--</div><div class="date" id="liveDate">--</div></div>
-<div class="status-badge" id="statusBadge">🟡 Загрузка карты...</div>
+
+<div class="clock">
+    <div class="time-main" id="liveTime">--:--</div>
+    <div class="date" id="liveDate">--</div>
+</div>
+
 <div class="legend">
     <div class="legend-item"><div class="legend-color" style="background: #6c757d;"></div> <span>⚪ Отбой / Спокойно</span></div>
-    <div class="legend-item"><div class="legend-color" style="background: #ffc107;"></div> <span>🟡 Угроза БПЛА</span></div>
-    <div class="legend-item"><div class="legend-color" style="background: #dc3545;"></div> <span>🔴 Внимание / Угроза</span></div>
-    <div class="legend-item"><div class="legend-color" style="background: #800020;"></div> <span>💀 Ракетная опасность</span></div>
+    <div class="legend-item"><div class="legend-color" style="background: #28a745;"></div> <span>🟢 Внимание по БПЛА</span></div>
+    <div class="legend-item"><div class="legend-color" style="background: #ffc107;"></div> <span>🟡 Опасность БПЛА</span></div>
+    <div class="legend-item"><div class="legend-color" style="background: #800020;"></div> <span>🏴‍☠️ Ракетная опасность</span></div>
 </div>
+
 <div id="map" style="width: 100vw; height: 100vh; position: absolute; top: 0; left: 0;"></div>
-<div id="loader" class="loader"><div class="loader-spinner"></div><span>Загрузка границ регионов...</span></div>
+
+<div id="loader" class="loader">
+    <div class="loader-spinner"></div>
+    <span>Загрузка границ регионов...</span>
+</div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
 <script>
-    // ============================================================
-    // 1. КАРТА И ОСНОВНЫЕ НАСТРОЙКИ
-    // ============================================================
-    const map = L.map('map').setView([61, 95], 4.2);
+    // ===========================================
+    // ИНИЦИАЛИЗАЦИЯ КАРТЫ
+    // ===========================================
+    const map = L.map('map').setView([61, 95], 4);
+
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '', subdomains: 'abcd', maxZoom: 10, minZoom: 2
+        attribution: '',
+        subdomains: 'abcd',
+        maxZoom: 10,
+        minZoom: 2
     }).addTo(map);
 
-    // Цвета тревог (0 - отбой, 1 - БПЛА, 2 - внимание/общая угроза, 3 - ракетная)
+    // ===========================================
+    // НОВЫЕ ЦВЕТА ТРЕВОГ
+    // 0 - отбой (серый)
+    // 1 - опасность БПЛА (жёлтый)
+    // 2 - внимание по БПЛА (зелёный)
+    // 3 - ракетная опасность (бордовый)
+    // ===========================================
     const colors = {
-        0: "#6c757d",   // серый спокойный
-        1: "#ffc107",   // жёлтый (БПЛА)
-        2: "#dc3545",   // красный (внимание, угроза)
-        3: "#800020"    // бордовый (ракетная опасность)
+        clear: "#6c757d",      // отбой
+        droneDanger: "#ffc107", // опасность БПЛА (жёлтый)
+        droneAttention: "#28a745", // внимание по БПЛА (зелёный)
+        rocket: "#800020"      // ракетная опасность
     };
 
-    let currentAlerts = {};     // { имя_региона: уровень (0-3) }
+    let currentAlertLevels = {};
     let regionsLayer = null;
-    let geoToKey = {};           // соответствие "имя из GeoJSON" -> "нормализованное имя региона"
-    
-    // ============================================================
-    // 2. ЧАСЫ (без секунд)
-    // ============================================================
+
+    // ===========================================
+    // ЧАСЫ
+    // ===========================================
     function updateClock() {
         const now = new Date();
-        document.getElementById('liveTime').innerHTML = now.toLocaleTimeString('ru-RU', { hour:'2-digit', minute:'2-digit' });
-        document.getElementById('liveDate').innerHTML = now.toLocaleDateString('ru-RU', { day:'numeric', month:'long', weekday:'long' });
+        const hours = now.getHours().toString().padStart(2, '0');
+        const minutes = now.getMinutes().toString().padStart(2, '0');
+        document.getElementById('liveTime').innerHTML = `${hours}:${minutes}`;
+        const options = { day: 'numeric', month: 'long', weekday: 'long' };
+        document.getElementById('liveDate').innerHTML = now.toLocaleDateString('ru-RU', options);
     }
     updateClock();
     setInterval(updateClock, 60000);
 
-    // ============================================================
-    // 3. БАЗА РЕГИОНОВ + СИНОНИМЫ (МАКСИМАЛЬНО ПОЛНАЯ)
-    // ============================================================
-    const regionSynonyms = {
-        "Москва": ["москва", "мск", "г москва", "город москва"],
-        "Московская область": ["московская область", "подмосковье", "мо обл", "московская обл"],
+    // ===========================================
+    // ФОРМАТИРОВАНИЕ НАЗВАНИЙ
+    // ===========================================
+    function formatRegionName(name) {
+        if (!name) return "";
+        const words = name.split(' ');
+        if (words.length === 1) return words[0];
+        return `${words[0]}<br>${words.slice(1).join(' ')}`;
+    }
+
+    // ===========================================
+    // РЕГИОНЫ ДЛЯ ПАРСИНГА (исправлены Москва и Лен.область)
+    // ===========================================
+    const regionAliases = {
+        "Москва": ["москва", "мск", "г москва", "город москва", "москве", "москвы"],
+        "Московская область": ["московская область", "подмосковье", "московская обл", "мо обл"],
         "Санкт-Петербург": ["санкт-петербург", "питер", "спб"],
-        "Ленинградская область": ["ленинградская область", "ленобласть", "ленинградская обл"],
+        "Ленинградская область": ["ленинградская область", "ленинградская обл", "ленобласть", "ленинградской"],
         "Белгородская область": ["белгородская область", "белгород"],
         "Брянская область": ["брянская область", "брянск"],
-        "Владимирская область": ["владимирская область", "владимир"],
+        "Владимирская область": ["владимирская область", "владимирская"],
         "Воронежская область": ["воронежская область", "воронеж"],
-        "Ивановская область": ["ивановская область", "иваново"],
+        "Ивановская область": ["ивановская область"],
         "Калужская область": ["калужская область", "калуга"],
         "Костромская область": ["костромская область", "кострома"],
         "Курская область": ["курская область", "курск"],
         "Липецкая область": ["липецкая область", "липецк"],
         "Нижегородская область": ["нижегородская область", "нижний новгород"],
+        "Новгородская область": ["новгородская область", "новгород"],
         "Орловская область": ["орловская область", "орел"],
+        "Пензенская область": ["пензенская область", "пенза"],
+        "Псковская область": ["псковская область", "псков"],
         "Рязанская область": ["рязанская область", "рязань"],
         "Смоленская область": ["смоленская область", "смоленск"],
         "Тамбовская область": ["тамбовская область", "тамбов"],
         "Тверская область": ["тверская область", "тверь"],
         "Тульская область": ["тульская область", "тула"],
         "Ярославская область": ["ярославская область", "ярославль"],
-        "Краснодарский край": ["краснодарский край", "кубань", "краснодар"],
-        "Ставропольский край": ["ставропольский край", "ставрополь"],
-        "Ростовская область": ["ростовская область", "ростов-на-дону", "ростов"],
+        "Краснодарский край": ["краснодарский край", "кубань"],
+        "Ставропольский край": ["ставропольский край", "ставрополье"],
+        "Ростовская область": ["ростовская область", "ростов-на-дону"],
         "Волгоградская область": ["волгоградская область", "волгоград"],
         "Астраханская область": ["астраханская область", "астрахань"],
-        "Республика Татарстан": ["татарстан", "республика татарстан", "казань"],
-        "Республика Башкортостан": ["башкортостан", "республика башкортостан", "уфа"],
-        "Республика Крым": ["крым", "республика крым", "симферополь"],
+        "Республика Татарстан": ["татарстан", "республика татарстан"],
+        "Республика Башкортостан": ["башкортостан", "республика башкортостан"],
+        "Республика Крым": ["крым", "республика крым"],
         "Калининградская область": ["калининградская область", "калининград"],
         "Свердловская область": ["свердловская область", "екатеринбург"],
         "Челябинская область": ["челябинская область", "челябинск"],
@@ -194,325 +256,292 @@
         "Саратовская область": ["саратовская область", "саратов"],
         "Пермский край": ["пермский край", "пермь"],
         "Ханты-Мансийский АО": ["хмао", "ханты-мансийский"],
-        "Ямало-Ненецкий АО": ["янао", "ямало-ненецкий"],
-        "Республика Дагестан": ["дагестан", "республика дагестан", "махачкала"],
-        "Республика Карелия": ["карелия", "республика карелия"],
-        "Архангельская область": ["архангельская область", "архангельск"],
-        "Мурманская область": ["мурманская область", "мурманск"],
-        "Чеченская Республика": ["чечня", "чеченская", "грозный"],
-        "Республика Адыгея": ["адыгея", "республика адыгея"],
-        "Республика Бурятия": ["бурятия", "республика бурятия"],
-        "Забайкальский край": ["забайкальский край", "чита"],
-        "Камчатский край": ["камчатский край", "камчатка"],
-        "Амурская область": ["амурская область", "благовещенск"],
-        "Сахалинская область": ["сахалинская область", "сахалин"],
-        "Магаданская область": ["магаданская область", "магадан"],
-        "Республика Коми": ["коми", "республика коми"],
-        "Удмуртская Республика": ["удмуртия", "удмуртская"],
-        "Чувашская Республика": ["чувашия", "чувашская"],
-        "Республика Марий Эл": ["марий эл", "йошкар-ола"]
+        "Ямало-Ненецкий АО": ["янао", "ямало-ненецкий"]
     };
 
-    // ============================================================
-    // 4. ЗАГРУЗКА ГРАНИЦ (GeoJSON с GitHub)
-    // ============================================================
-    const geoUrl = "https://raw.githubusercontent.com/azatkh/ru-regions-geojson/main/regions.geojson";
+    // ===========================================
+    // ЗАГРУЗКА ГРАНИЦ С GITHUB
+    // ===========================================
+    const geojsonUrl = "https://raw.githubusercontent.com/azatkh/ru-regions-geojson/main/regions.geojson";
     const fallbackUrl = "https://raw.githubusercontent.com/codeforgermany/click_that_hood/main/public/data/russia.geojson";
-
-    function loadBoundaries(url, isFallback = false) {
+    
+    function loadGeoJSON(url, isFallback = false) {
         fetch(url)
-            .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-            .then(data => {
-                document.getElementById('loader').style.display = 'none';
-                initRegions(data);
+            .then(response => {
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                return response.json();
             })
-            .catch(err => {
-                console.warn("Ошибка загрузки", url, err);
-                if (!isFallback) loadBoundaries(fallbackUrl, true);
-                else {
-                    document.getElementById('loader').innerHTML = '<span>❌ Не удалось загрузить границы</span>';
-                    setTimeout(() => { document.getElementById('loader').style.display = 'none'; }, 3000);
+            .then(data => {
+                console.log("GeoJSON загружен:", url);
+                document.getElementById('loader').style.display = 'none';
+                initRegionsLayer(data);
+            })
+            .catch(error => {
+                console.error("Ошибка загрузки из", url, error);
+                if (!isFallback) {
+                    console.log("Пробуем запасной источник...");
+                    loadGeoJSON(fallbackUrl, true);
+                } else {
+                    document.getElementById('loader').innerHTML = '<span>❌ Ошибка загрузки границ. Проверьте соединение.</span>';
+                    setTimeout(() => {
+                        document.getElementById('loader').style.display = 'none';
+                    }, 3000);
                 }
             });
     }
 
-    // Создаём соответствие имён из GeoJSON → ключ в regionSynonyms
-    function buildGeoToKey(geoData) {
-        const mapping = {};
-        for (const feature of geoData.features) {
-            let rawName = feature.properties?.name || feature.properties?.NAME || feature.properties?.admin_name || "";
-            if (!rawName) continue;
-            const normalizedRaw = rawName.trim().toLowerCase();
-            // Прямое совпадение с ключом
-            let matchedKey = null;
-            for (const key of Object.keys(regionSynonyms)) {
-                if (normalizedRaw === key.toLowerCase()) {
-                    matchedKey = key;
-                    break;
-                }
-            }
-            if (!matchedKey) {
-                // Поиск по вхождению
-                for (const key of Object.keys(regionSynonyms)) {
-                    if (normalizedRaw.includes(key.toLowerCase()) || key.toLowerCase().includes(normalizedRaw)) {
-                        matchedKey = key;
-                        break;
-                    }
-                }
-            }
-            if (!matchedKey) {
-                // По синонимам
-                for (const [key, synonyms] of Object.entries(regionSynonyms)) {
-                    if (synonyms.some(s => normalizedRaw.includes(s) || s.includes(normalizedRaw))) {
-                        matchedKey = key;
-                        break;
-                    }
-                }
-            }
-            if (matchedKey) mapping[rawName] = matchedKey;
-            else console.log("Не сопоставлен регион:", rawName);
-        }
-        return mapping;
-    }
-
-    function initRegions(geoJson) {
-        geoToKey = buildGeoToKey(geoJson);
-        regionsLayer = L.geoJSON(geoJson, {
-            style: (feature) => {
-                const geoName = feature.properties?.name || feature.properties?.NAME || "";
-                const key = geoToKey[geoName];
-                const level = (key && currentAlerts[key]) ? currentAlerts[key] : 0;
+    function initRegionsLayer(geoJsonData) {
+        regionsLayer = L.geoJSON(geoJsonData, {
+            style: function(feature) {
+                let regionName = feature.properties?.name || 
+                                feature.properties?.NAME || 
+                                feature.properties?.admin_name ||
+                                feature.properties?.region ||
+                                "";
+                const level = currentAlertLevels[regionName] || 0;
+                let fillColor;
+                if (level === 0) fillColor = colors.clear;
+                else if (level === 1) fillColor = colors.droneDanger;
+                else if (level === 2) fillColor = colors.droneAttention;
+                else fillColor = colors.rocket;
+                
                 return {
                     color: "#ffffff",
                     weight: 2.2,
-                    fillColor: colors[level] || colors[0],
-                    fillOpacity: 0.72,
-                    smoothFactor: 0.5
+                    fillColor: fillColor,
+                    fillOpacity: 0.7,
+                    smoothFactor: 0.5,
+                    opacity: 0.9
                 };
             },
-            onEachFeature: (feature, layer) => {
-                const geoName = feature.properties?.name || feature.properties?.NAME || "";
-                const key = geoToKey[geoName];
-                const level = (key && currentAlerts[key]) ? currentAlerts[key] : 0;
-                const levelText = level === 0 ? "⚪ Отбой / Спокойно" :
-                                  level === 1 ? "🟡 Угроза БПЛА" :
-                                  level === 2 ? "🔴 Внимание / Угроза" : "💀 РАКЕТНАЯ ОПАСНОСТЬ";
-                const levelColor = level === 0 ? "#adb5bd" : level === 1 ? "#ffc107" : level === 2 ? "#ff6b6b" : "#c41e3a";
-                layer.bindPopup(`
-                    <div style="font-family:'Segoe UI'; font-weight:bold; min-width:160px;">
-                        <div style="font-size:1.1rem; border-bottom:1px solid #333; padding-bottom:5px;">${geoName}</div>
-                        <span style="color:${levelColor};">${levelText}</span>
-                    </div>
-                `);
+            onEachFeature: function(feature, layer) {
+                let regionName = feature.properties?.name || 
+                                feature.properties?.NAME || 
+                                feature.properties?.admin_name ||
+                                feature.properties?.region ||
+                                "";
+                if (regionName) {
+                    const formattedName = formatRegionName(regionName);
+                    const level = currentAlertLevels[regionName] || 0;
+                    
+                    let levelText = "";
+                    let levelColor = "";
+                    if (level === 0) {
+                        levelText = "⚪ Отбой / Спокойно";
+                        levelColor = "#adb5bd";
+                    } else if (level === 1) {
+                        levelText = "🟡 Опасность БПЛА";
+                        levelColor = "#ffc107";
+                    } else if (level === 2) {
+                        levelText = "🟢 Внимание! Угроза БПЛА";
+                        levelColor = "#6fcf97";
+                    } else {
+                        levelText = "💀 РАКЕТНАЯ ОПАСНОСТЬ! Укрытие!";
+                        levelColor = "#c41e3a";
+                    }
+                    
+                    layer.bindPopup(`
+                        <div style="font-family: 'Segoe UI'; font-weight: bold; min-width: 160px;">
+                            <div style="font-size:1.1rem; margin-bottom: 8px; border-bottom: 1px solid #333; padding-bottom: 5px;">
+                                ${formattedName}
+                            </div>
+                            <span style="color:${levelColor}; font-size:0.9rem;">${levelText}</span>
+                        </div>
+                    `, { className: 'custom-popup' });
+                    
+                    if (!feature.properties._layer) {
+                        feature.properties._layer = layer;
+                    }
+                }
             }
         }).addTo(map);
         
-        // плавный зум
-        setTimeout(() => map.flyTo([61, 95], 4.5, { duration: 1.2 }), 200);
-        // запускаем парсинг
-        fetchAlerts();
-        setInterval(fetchAlerts, 30000);
+        setTimeout(() => {
+            map.flyTo([61, 95], 4.5, { duration: 1.2 });
+        }, 200);
+        
+        fetchAndUpdateAlerts();
+        setInterval(fetchAndUpdateAlerts, 35000);
     }
 
-    // Перекраска регионов при изменении тревог
-    function updateMapColors() {
+    function updateRegionColors() {
         if (!regionsLayer) return;
+        
         regionsLayer.eachLayer(layer => {
-            const geoName = layer.feature?.properties?.name || layer.feature?.properties?.NAME || "";
-            const key = geoToKey[geoName];
-            const level = (key && currentAlerts[key]) ? currentAlerts[key] : 0;
+            let regionName = layer.feature?.properties?.name || 
+                            layer.feature?.properties?.NAME || 
+                            layer.feature?.properties?.admin_name ||
+                            layer.feature?.properties?.region ||
+                            "";
+            const level = currentAlertLevels[regionName] || 0;
+            let fillColor;
+            if (level === 0) fillColor = colors.clear;
+            else if (level === 1) fillColor = colors.droneDanger;
+            else if (level === 2) fillColor = colors.droneAttention;
+            else fillColor = colors.rocket;
+            
             layer.setStyle({
-                fillColor: colors[level] || colors[0],
-                fillOpacity: 0.72,
+                fillColor: fillColor,
+                fillOpacity: 0.7,
                 color: "#ffffff",
                 weight: 2.2
             });
+            
             if (layer.getPopup()) {
-                const levelText = level === 0 ? "⚪ Отбой / Спокойно" :
-                                 level === 1 ? "🟡 Угроза БПЛА" :
-                                 level === 2 ? "🔴 Внимание / Угроза" : "💀 РАКЕТНАЯ ОПАСНОСТЬ";
-                const levelColor = level === 0 ? "#adb5bd" : level === 1 ? "#ffc107" : level === 2 ? "#ff6b6b" : "#c41e3a";
+                const formattedName = formatRegionName(regionName);
+                let levelText = "";
+                let levelColor = "";
+                if (level === 0) {
+                    levelText = "⚪ Отбой / Спокойно";
+                    levelColor = "#adb5bd";
+                } else if (level === 1) {
+                    levelText = "🟡 Опасность БПЛА";
+                    levelColor = "#ffc107";
+                } else if (level === 2) {
+                    levelText = "🟢 Внимание! Угроза БПЛА";
+                    levelColor = "#6fcf97";
+                } else {
+                    levelText = "💀 РАКЕТНАЯ ОПАСНОСТЬ! Укрытие!";
+                    levelColor = "#c41e3a";
+                }
+                
                 layer.getPopup().setContent(`
-                    <div style="font-family:'Segoe UI'; font-weight:bold; min-width:160px;">
-                        <div style="font-size:1.1rem; border-bottom:1px solid #333; padding-bottom:5px;">${geoName}</div>
-                        <span style="color:${levelColor};">${levelText}</span>
+                    <div style="font-family: 'Segoe UI'; font-weight: bold; min-width: 160px;">
+                        <div style="font-size:1.1rem; margin-bottom: 8px; border-bottom: 1px solid #333; padding-bottom: 5px;">
+                            ${formattedName}
+                        </div>
+                        <span style="color:${levelColor}; font-size:0.9rem;">${levelText}</span>
                     </div>
                 `);
             }
         });
-        const alertCount = Object.values(currentAlerts).filter(lvl => lvl > 0).length;
-        document.getElementById('statusBadge').innerHTML = alertCount ? `⚠️ Тревог: ${alertCount}` : `✅ Мониторинг | ${new Date().toLocaleTimeString()}`;
     }
 
-    // ============================================================
-    // 5. ПАРСИНГ TELEGRAM – МАКСИМАЛЬНО НАДЁЖНЫЙ (3 прокси, ретраи)
-    // ============================================================
-    const proxyList = [
-        "https://api.allorigins.win/raw?url=",
-        "https://cors-anywhere.herokuapp.com/",
-        "https://thingproxy.freeboard.io/fetch/"
-    ];
-    const channelUrl = "https://t.me/s/radarrussiia";
-
-    async function fetchWithTimeout(url, timeout = 10000) {
-        const controller = new AbortController();
-        const id = setTimeout(() => controller.abort(), timeout);
+    // ===========================================
+    // ПАРСИНГ TELEGRAM (НОВЫЙ КАНАЛ)
+    // ===========================================
+    async function parseTelegramAlerts() {
+        const proxyUrl = "https://api.allorigins.win/raw?url=";
+        const channel = "https://t.me/s/radarrussiia";  // новый канал
+        
         try {
-            const response = await fetch(url, { signal: controller.signal });
-            clearTimeout(id);
-            return response;
-        } catch (err) {
-            clearTimeout(id);
-            throw err;
-        }
-    }
-
-    async function fetchTelegramPage(proxyIndex = 0) {
-        if (proxyIndex >= proxyList.length) throw new Error("All proxies failed");
-        const proxy = proxyList[proxyIndex];
-        const fullUrl = proxy + encodeURIComponent(channelUrl);
-        console.log(`Попытка через прокси ${proxyIndex}: ${proxy}`);
-        try {
-            const resp = await fetchWithTimeout(fullUrl, 12000);
-            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-            const html = await resp.text();
-            if (html.length < 500) throw new Error("Empty response");
-            return html;
-        } catch (err) {
-            console.warn(`Прокси ${proxyIndex} не сработал:`, err);
-            return fetchTelegramPage(proxyIndex + 1);
-        }
-    }
-
-    async function parseAlertsFromTelegram() {
-        try {
-            const html = await fetchTelegramPage(0);
-            // извлекаем все сообщения
+            const resp = await fetch(proxyUrl + encodeURIComponent(channel));
+            if (!resp.ok) throw new Error("Ошибка загрузки");
+            let html = await resp.text();
+            
+            let allHtml = html;
+            for (let i = 0; i < 2; i++) {
+                const matchIds = [...allHtml.matchAll(/data-post="\/radarrussiia(\d+)"/g)];
+                if (matchIds.length === 0) break;
+                const ids = matchIds.map(m => parseInt(m[1]));
+                const oldest = Math.min(...ids);
+                const nextUrl = `https://t.me/s/radarrussiia?before=${oldest}`;
+                const nextResp = await fetch(proxyUrl + encodeURIComponent(nextUrl));
+                if (!nextResp.ok) break;
+                allHtml += await nextResp.text();
+            }
+            
             const postRegex = /data-post="radarrussiia\/(\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\/div>/gis;
             const posts = [];
-            let match;
-            while ((match = postRegex.exec(html)) !== null) {
-                let textRaw = match[2].replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').toLowerCase();
+            let m;
+            while ((m = postRegex.exec(allHtml)) !== null) {
                 posts.push({
-                    id: parseInt(match[1]),
-                    text: textRaw
+                    id: parseInt(m[1]),
+                    text: m[2].replace(/<[^>]*>/g, ' ').toLowerCase()
                 });
             }
-            if (posts.length === 0) {
-                console.warn("Не найдено постов на канале");
-                return {};
-            }
-            // сортируем по ID (новые – выше)
+            
             posts.sort((a,b) => b.id - a.id);
             
-            const tempAlertLevel = {}; // регион -> { level, postId }
+            const tempLevels = {};
             
             for (const post of posts) {
                 const text = post.text;
-                // Определяем регионы по синонимам
-                const matchedRegions = new Set();
-                for (const [region, synonyms] of Object.entries(regionSynonyms)) {
-                    for (const syn of synonyms) {
-                        if (text.includes(syn)) {
-                            matchedRegions.add(region);
-                            break;
-                        }
+                
+                let matchedRegions = [];
+                for (const [official, keywords] of Object.entries(regionAliases)) {
+                    if (keywords.some(kw => text.includes(kw))) {
+                        matchedRegions.push(official);
                     }
                 }
-                if (matchedRegions.size === 0) continue;
+                if (matchedRegions.length === 0) continue;
                 
-                // Определяем уровень угрозы
                 let level = 0;
-                const isOtboy = /\bотбой\b/i.test(text);
-                const isRocket = /\b(ракетн|ракет|баллистич|крылат|межконтинентальн)\b/i.test(text);
-                const isDrone = /\b(бпла|беспилотн|дрон|дроны)\b/i.test(text);
-                const isCriticalAttention = /\b(внимание|угроза|опасность|тревога)\b/i.test(text) && !isDrone && !isRocket;
+                const isOtboy = /отбой|снята|завершена|отменена/i.test(text);
+                const isDroneDanger = /\bбпла?\b|беспилот|дрон|угроза атаки/i.test(text);
+                const isDroneAttention = /внимание.*бпла|бпла.*внимание|угроза бпла|воздушная тревога/i.test(text);
+                const isRocket = /ракетн|ракета|баллистическ|крылат/i.test(text);
                 
                 if (isOtboy) {
                     level = 0;
                 } else if (isRocket) {
                     level = 3;
-                } else if (isDrone) {
+                } else if (isDroneAttention) {
+                    level = 2;   // зелёный
+                } else if (isDroneDanger) {
+                    level = 1;   // жёлтый
+                } else if (/опасность|тревога/i.test(text)) {
                     level = 1;
-                } else if (isCriticalAttention) {
-                    level = 2;
-                } else {
-                    continue; // не опасное сообщение
                 }
                 
-                // Записываем только если это сообщение новее
                 for (const region of matchedRegions) {
-                    const existing = tempAlertLevel[region];
+                    const existing = tempLevels[region];
                     if (!existing || existing.postId < post.id) {
-                        tempAlertLevel[region] = { level, postId: post.id };
+                        tempLevels[region] = { level, postId: post.id };
                     }
                 }
             }
             
-            // Формируем финальный объект активных тревог (уровень > 0)
-            const newAlerts = {};
-            for (const [region, data] of Object.entries(tempAlertLevel)) {
-                if (data.level > 0) {
-                    newAlerts[region] = data.level;
-                }
+            const finalAlerts = {};
+            for (const [region, data] of Object.entries(tempLevels)) {
+                finalAlerts[region] = data.level;
             }
-            console.log("Активные тревоги (распарсено):", newAlerts);
-            return newAlerts;
+            console.log("Уровни тревог:", finalAlerts);
+            return finalAlerts;
         } catch (err) {
-            console.error("Критическая ошибка парсинга:", err);
+            console.error("Парсинг ошибка:", err);
             return {};
         }
     }
-
-    // Обновление состояния и карты
-    async function fetchAlerts() {
+    
+    async function fetchAndUpdateAlerts() {
         try {
-            const alerts = await parseAlertsFromTelegram();
+            const levels = await parseTelegramAlerts();
             let changed = false;
-            // Добавляем новые или обновляем существующие
-            for (const [region, level] of Object.entries(alerts)) {
-                if (currentAlerts[region] !== level) {
-                    currentAlerts[region] = level;
+            for (const [reg, lvl] of Object.entries(levels)) {
+                if (currentAlertLevels[reg] !== lvl) {
+                    currentAlertLevels[reg] = lvl;
                     changed = true;
                 }
             }
-            // Удаляем регионы, которых нет в новых (но только если у них был уровень >0)
-            for (const region of Object.keys(currentAlerts)) {
-                if (!alerts[region] && currentAlerts[region] > 0) {
-                    delete currentAlerts[region];
-                    changed = true;
-                }
+            if (changed || Object.keys(levels).length > 0) {
+                updateRegionColors();
+                localStorage.setItem("alertCache", JSON.stringify(currentAlertLevels));
             }
-            if (changed) {
-                updateMapColors();
-                localStorage.setItem("airAlertCache", JSON.stringify(currentAlerts));
-            }
-        } catch (err) {
-            console.error("Ошибка fetchAlerts:", err);
-            // Если нет данных, пробуем взять из кэша
-            const cached = localStorage.getItem("airAlertCache");
-            if (cached && Object.keys(currentAlerts).length === 0) {
+        } catch(e) {
+            console.warn("Ошибка обновления", e);
+            const cached = localStorage.getItem("alertCache");
+            if (cached && Object.keys(currentAlertLevels).length === 0) {
                 try {
-                    currentAlerts = JSON.parse(cached);
-                    updateMapColors();
-                } catch(e) {}
+                    currentAlertLevels = JSON.parse(cached);
+                    updateRegionColors();
+                } catch(er) {}
             }
         }
     }
-
-    // ============================================================
-    // 6. ЗАПУСК
-    // ============================================================
-    loadBoundaries(geoUrl);
     
-    // Плавный зум при взаимодействии
-    map.on('zoomend', () => {
+    loadGeoJSON(geojsonUrl);
+    
+    map.on('zoomend', function() {
         if (map.getZoom() > 7) {
-            map.flyTo(map.getCenter(), map.getZoom(), { duration: 0.25 });
+            map.flyTo(map.getCenter(), map.getZoom(), { duration: 0.3 });
         }
     });
+    
     document.addEventListener("visibilitychange", () => {
-        if (!document.hidden && regionsLayer) fetchAlerts();
+        if (!document.hidden && regionsLayer) {
+            fetchAndUpdateAlerts();
+        }
     });
 </script>
 </body>
