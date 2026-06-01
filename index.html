@@ -514,7 +514,7 @@
     // ===========================================
     async function parseTelegramAlerts() {
         const proxyUrl = "https://api.allorigins.win/raw?url=";
-        const channel = "https://t.me/s/bplarussiaru";
+        const channel = "https://t.me/s/radarrussiia";
         
         try {
             const resp = await fetch(proxyUrl + encodeURIComponent(channel));
@@ -522,7 +522,7 @@
             let html = await resp.text();
             
             let allHtml = html;
-            const firstMatch = html.match(/data-post="\/bplarussiaru(\d+)"/);
+            const firstMatch = html.match(/data-post="\/radarrussiia(\d+)"/);
             if (firstMatch) {
                 const oldestId = parseInt(firstMatch[1]);
                 const nextUrl = `https://t.me/s/bplarussiaru?before=${oldestId}`;
@@ -532,7 +532,7 @@
                 }
             }
             
-            const postRegex = /data-post="bplarussiaru\/(\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\/div>/gis;
+            const postRegex = /data-post="radarrussiia\/(\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\/div>/gis;
             const posts = [];
             let m;
             while ((m = postRegex.exec(allHtml)) !== null) {
