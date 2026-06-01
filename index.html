@@ -6,90 +6,20 @@
 <title>Карта тревог РФ - информирование гражданских</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
-    * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-    }
-    body {
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        background: #f0f2f5;
-    }
-    .header {
-        background: linear-gradient(135deg, #1e3c72, #2a5298);
-        color: white;
-        padding: 15px 20px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    }
-    h1 {
-        font-size: 1.4rem;
-        margin-bottom: 5px;
-    }
-    .subtitle {
-        font-size: 0.85rem;
-        opacity: 0.9;
-    }
-    .status-bar {
-        background: white;
-        padding: 8px 20px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: 10px;
-        border-bottom: 1px solid #ddd;
-        font-size: 0.9rem;
-    }
-    .alert-count {
-        background: #ff4444;
-        color: white;
-        padding: 4px 12px;
-        border-radius: 20px;
-        font-weight: bold;
-    }
-    .last-update {
-        color: #555;
-    }
-    .legend {
-        background: white;
-        padding: 8px 15px;
-        border-radius: 8px;
-        display: flex;
-        gap: 20px;
-        font-size: 0.8rem;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-    }
-    .legend-color {
-        width: 20px;
-        height: 20px;
-        display: inline-block;
-        border-radius: 3px;
-        margin-right: 5px;
-        vertical-align: middle;
-    }
-    #map {
-        width: 100%;
-        height: calc(100vh - 110px);
-    }
-    .footer {
-        position: fixed;
-        bottom: 10px;
-        right: 10px;
-        background: rgba(0,0,0,0.7);
-        color: white;
-        padding: 5px 12px;
-        border-radius: 20px;
-        font-size: 0.7rem;
-        z-index: 1000;
-        pointer-events: none;
-    }
-    @media (max-width: 600px) {
-        h1 { font-size: 1rem; }
-        .status-bar { font-size: 0.7rem; }
-        .legend { font-size: 0.65rem; }
-    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background:#f0f2f5; }
+    .header { background: linear-gradient(135deg,#1e3c72,#2a5298); color:white; padding:15px 20px; box-shadow:0 2px 10px rgba(0,0,0,0.1);}
+    h1 { font-size:1.4rem; margin-bottom:5px; }
+    .subtitle { font-size:0.85rem; opacity:0.9; }
+    .status-bar { background:white; padding:8px 20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; border-bottom:1px solid #ddd; font-size:0.9rem;}
+    .alert-count { background:#ff4444; color:white; padding:4px 12px; border-radius:20px; font-weight:bold;}
+    .last-update { color:#555; }
+    .legend { background:white; padding:8px 15px; border-radius:8px; display:flex; gap:20px; font-size:0.8rem; box-shadow:0 1px 3px rgba(0,0,0,0.2);}
+    .legend-color { width:20px; height:20px; display:inline-block; border-radius:3px; margin-right:5px; vertical-align:middle; }
+    #map { width:100%; height:calc(100vh - 110px);}
+    .footer { position:fixed; bottom:10px; right:10px; background:rgba(0,0,0,0.7); color:white; padding:5px 12px; border-radius:20px; font-size:0.7rem; z-index:1000; pointer-events:none;}
+    @media(max-width:600px){ h1{font-size:1rem;} .status-bar{font-size:0.7rem;} .legend{font-size:0.65rem;}}
 </style>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 </head>
 <body>
 
@@ -100,8 +30,8 @@
 
 <div class="status-bar">
     <div class="legend">
-        <span><span class="legend-color" style="background: #d0d0d0;"></span> Без тревоги</span>
-        <span><span class="legend-color" style="background: #ff0000;"></span> Активная тревога</span>
+        <span><span class="legend-color" style="background:#d0d0d0;"></span> Без тревоги</span>
+        <span><span class="legend-color" style="background:#ff0000;"></span> Активная тревога</span>
     </div>
     <div>
         <span id="alertCountDisplay" class="alert-count">⚡ Загрузка...</span>
@@ -113,319 +43,100 @@
 <div class="footer">📡 источник: t.me/bplarussiaru | обновление: 30 сек</div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
 <script>
-    // ===========================================
-    // РЕГИОНЫ И СИНОНИМЫ (полный список)
-    // ===========================================
-    const regionAliases = {
-        "Москва": ["москва", "мск"],
-        "Московская область": ["московская область", "подмосковье"],
-        "Санкт-Петербург": ["санкт-петербург", "питер", "спб"],
-        "Ленинградская область": ["ленинградская область"],
-        "Белгородская область": ["белгородская область", "белгород"],
-        "Брянская область": ["брянская область", "брянск"],
-        "Владимирская область": ["владимирская область"],
-        "Воронежская область": ["воронежская область"],
-        "Ивановская область": ["ивановская область"],
-        "Калужская область": ["калужская область"],
-        "Костромская область": ["костромская область"],
-        "Курская область": ["курская область", "курск"],
-        "Липецкая область": ["липецкая область"],
-        "Нижегородская область": ["нижегородская область"],
-        "Новгородская область": ["новгородская область"],
-        "Орловская область": ["орловская область"],
-        "Пензенская область": ["пензенская область"],
-        "Псковская область": ["псковская область"],
-        "Рязанская область": ["рязанская область"],
-        "Смоленская область": ["смоленская область"],
-        "Тамбовская область": ["тамбовская область"],
-        "Тверская область": ["тверская область"],
-        "Тульская область": ["тульская область"],
-        "Ярославская область": ["ярославская область"],
-        "Краснодарский край": ["краснодарский край", "кубань"],
-        "Ставропольский край": ["ставропольский край"],
-        "Ростовская область": ["ростовская область"],
-        "Волгоградская область": ["волгоградская область"],
-        "Астраханская область": ["астраханская область"],
-        "Татарстан": ["татарстан", "республика татарстан"],
-        "Башкортостан": ["башкортостан", "республика башкортостан"],
-        "Марий Эл": ["марий эл", "республика марий эл"],
-        "Чувашская Республика": ["чувашия", "чувашская республика"],
-        "Республика Мордовия": ["мордовия", "республика мордовия"],
-        "Удмуртская Республика": ["удмуртия", "удмуртская республика"],
-        "Самарская область": ["самарская область"],
-        "Саратовская область": ["саратовская область"],
-        "Ульяновская область": ["ульяновская область"],
-        "Свердловская область": ["свердловская область"],
-        "Челябинская область": ["челябинская область"],
-        "Курганская область": ["курганская область"],
-        "Оренбургская область": ["оренбургская область"],
-        "Пермский край": ["пермский край"],
-        "Новосибирская область": ["новосибирская область"],
-        "Омская область": ["омская область"],
-        "Томская область": ["томская область"],
-        "Кемеровская область": ["кемеровская область"],
-        "Иркутская область": ["иркутская область"],
-        "Красноярский край": ["красноярский край"],
-        "Алтайский край": ["алтайский край"],
-        "Забайкальский край": ["забайкальский край"],
-        "Приморский край": ["приморский край"],
-        "Хабаровский край": ["хабаровский край"],
-        "Амурская область": ["амурская область"],
-        "Сахалинская область": ["сахалинская область"],
-        "Магаданская область": ["магаданская область"],
-        "Камчатский край": ["камчатский край"],
-        "Архангельская область": ["архангельская область"],
-        "Мурманская область": ["мурманская область"],
-        "Крым": ["крым", "республика крым"],
-        "Дагестан": ["дагестан", "республика дагестан"],
-        "Республика Карелия": ["карелия", "республика карелия"],
-        "Республика Коми": ["коми", "республика коми"],
-        "Республика Саха (Якутия)": ["якутия", "саха"],
-        "ХМАО": ["хмао", "ханты-мансийский"],
-        "ЯНАО": ["янао", "ямало-ненецкий"],
-        "Адыгея": ["адыгея", "республика адыгея"]
-    };
+// =====================
+// РЕГИОНЫ И СИНОНИМЫ
+// =====================
+const regionAliases = {
+"Москва":["москва","мск"],
+"Московская область":["московская область","подмосковье"],
+"Санкт-Петербург":["санкт-петербург","питер","спб"],
+"Ленинградская область":["ленинградская область"],
+"Белгородская область":["белгородская область","белгород"],
+"Брянская область":["брянская область","брянск"],
+"Владимирская область":["владимирская область"],
+"Воронежская область":["воронежская область"],
+"Ивановская область":["ивановская область"],
+"Калужская область":["калужская область"],
+"Костромская область":["костромская область"],
+"Курская область":["курская область","курск"],
+"Липецкая область":["липецкая область"],
+"Нижегородская область":["нижегородская область"],
+"Новгородская область":["новгородская область"],
+"Орловская область":["орловская область"],
+"Пензенская область":["пензенская область"],
+"Псковская область":["псковская область"],
+"Рязанская область":["рязанская область"],
+"Смоленская область":["смоленская область"],
+"Тамбовская область":["тамбовская область"],
+"Тверская область":["тверская область"],
+"Тульская область":["тульская область"],
+"Ярославская область":["ярославская область"],
+"Краснодарский край":["краснодарский край","кубань"],
+"Ставропольский край":["ставропольский край"],
+"Ростовская область":["ростовская область"],
+"Волгоградская область":["волгоградская область"],
+"Астраханская область":["астраханская область"],
+"Татарстан":["татарстан","республика татарстан"],
+"Башкортостан":["башкортостан","республика башкортостан"],
+"Марий Эл":["марий эл","республика марий эл"],
+"Чувашская Республика":["чувашия","чувашская республика"],
+"Республика Мордовия":["мордовия","республика мордовия"],
+"Удмуртская Республика":["удмуртия","удмуртская республика"],
+"Самарская область":["самарская область"],
+"Саратовская область":["саратовская область"],
+"Ульяновская область":["ульяновская область"],
+"Свердловская область":["свердловская область"],
+"Челябинская область":["челябинская область"],
+"Курганская область":["курганская область"],
+"Оренбургская область":["оренбургская область"],
+"Пермский край":["пермский край"],
+"Новосибирская область":["новосибирская область"],
+"Омская область":["омская область"],
+"Томская область":["томская область"],
+"Кемеровская область":["кемеровская область"],
+"Иркутская область":["иркутская область"],
+"Красноярский край":["красноярский край"],
+"Алтайский край":["алтайский край"],
+"Забайкальский край":["забайкальский край"],
+"Приморский край":["приморский край"],
+"Хабаровский край":["хабаровский край"],
+"Амурская область":["амурская область"],
+"Сахалинская область":["сахалинская область"],
+"Магаданская область":["магаданская область"],
+"Камчатский край":["камчатский край"],
+"Архангельская область":["архангельская область"],
+"Мурманская область":["мурманская область"],
+"Крым":["крым","республика крым"],
+"Дагестан":["дагестан","республика дагестан"],
+"Республика Карелия":["карелия","республика карелия"],
+"Республика Коми":["коми","республика коми"],
+"Республика Саха (Якутия)":["якутия","саха"],
+"ХМАО":["хмао","ханты-мансийский"],
+"ЯНАО":["янао","ямало-ненецкий"],
+"Адыгея":["адыгея","республика адыгея"]
+};
 
-    // ===========================================
-    // ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ КАРТЫ
-    // ===========================================
-    const map = L.map('map').setView([61, 105], 3);
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors',
-        maxZoom: 10
-    }).addTo(map);
+// =====================
+// КАРТА
+// =====================
+const map = L.map('map').setView([61,105],3);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
+ attribution:'© OpenStreetMap contributors', maxZoom:10
+}).addTo(map);
 
-    const normalColor = "#d0d0d0";
-    const alertColor = "#ff0000";
-    let regionsLayer = null;
-    let activeAlerts = {};
-    let updateInterval = null;
+const normalColor="#d0d0d0";
+const alertColor="#ff0000";
+let regionsLayer=null;
+let activeAlerts={};
+let updateInterval=null;
 
-    // Загружаем GeoJSON России
-    const geojsonUrl = "https://raw.githubusercontent.com/codeforgermany/click_that_hood/main/public/data/russia.geojson";
-    
-    fetch(geojsonUrl)
-        .then(response => response.json())
-        .then(data => {
-            regionsLayer = L.geoJSON(data, {
-                style: function(feature) {
-                    return {
-                        color: "#555",
-                        weight: 1,
-                        fillColor: normalColor,
-                        fillOpacity: 0.7
-                    };
-                },
-                onEachFeature: function(feature, layer) {
-                    if (feature.properties && feature.properties.name) {
-                        const regionName = feature.properties.name;
-                        layer.bindPopup(`
-                            <b>${regionName}</b><br>
-                            ${activeAlerts[regionName] ? '🚨 <span style="color:red">ТРЕВОГА АКТИВНА</span>' : '✅ Спокойно'}
-                        `);
-                    }
-                }
-            }).addTo(map);
-            
-            // После загрузки регионов запускаем обновление
-            fetchAndUpdateAlerts();
-            if (updateInterval) clearInterval(updateInterval);
-            updateInterval = setInterval(fetchAndUpdateAlerts, 30000);
-        })
-        .catch(error => {
-            console.error("Ошибка загрузки карты:", error);
-            document.getElementById("alertCountDisplay").innerHTML = "❌ Ошибка карты";
-        });
+// Загрузка GeoJSON России
+const geojsonUrl="https://raw.githubusercontent.com/codeforgermany/click_that_hood/main/public/data/russia.geojson";
 
-    // Функция обновления цветов регионов на основе activeAlerts
-    function applyAlertStyles() {
-        if (!regionsLayer) return;
-        
-        let alertCount = 0;
-        regionsLayer.eachLayer(layer => {
-            if (layer.feature && layer.feature.properties) {
-                const regionName = layer.feature.properties.name;
-                if (activeAlerts[regionName]) {
-                    layer.setStyle({ fillColor: alertColor });
-                    alertCount++;
-                } else {
-                    layer.setStyle({ fillColor: normalColor });
-                }
-                
-                // Обновляем popup при клике
-                if (layer.getPopup()) {
-                    layer.getPopup().setContent(`
-                        <b>${regionName}</b><br>
-                        ${activeAlerts[regionName] ? '🚨 <span style="color:red">ТРЕВОГА АКТИВНА</span>' : '✅ Без тревоги'}
-                    `);
-                }
-            }
-        });
-        
-        document.getElementById("alertCountDisplay").innerHTML = `⚠️ Тревог: ${alertCount}`;
-        const now = new Date();
-        document.getElementById("updateTime").innerHTML = `🕒 ${now.toLocaleTimeString()}`;
-    }
-
-    // ===========================================
-    // ПАРСИНГ TELEGRAM (имитация серверного сбора через CORS-прокси)
-    // ВНИМАНИЕ: прямой fetch к t.me в браузере заблокирован CORS.
-    // Для демонстрации используется публичный CORS-прокси. 
-    // В продакшене лучше сделать свой небольшой бэкенд.
-    // ===========================================
-    async function parseTelegramAlerts() {
-        const proxyUrl = "https://api.allorigins.win/raw?url=";
-        const telegramChannel = "https://t.me/s/bplarussiaru";
-        
-        try {
-            // Пытаемся получить страницу через прокси (обход CORS)
-            const response = await fetch(proxyUrl + encodeURIComponent(telegramChannel));
-            if (!response.ok) throw new Error("Не удалось загрузить канал");
-            let html = await response.text();
-            
-            // Догружаем старые посты (до 5 страниц)
-            let allHtml = html;
-            let oldestPostMatch = html.match(/data-post="\/bplarussiaru(\d+)"/g);
-            let postsIds = [];
-            if (oldestPostMatch) {
-                postsIds = oldestPostMatch.map(m => parseInt(m.match(/\d+/)[0]));
-            }
-            
-            for(let attempt = 0; attempt < 3; attempt++) {
-                if(postsIds.length === 0) break;
-                const oldest = Math.min(...postsIds);
-                const nextUrl = `https://t.me/s/bplarussiaru?before=${oldest}`;
-                const nextResp = await fetch(proxyUrl + encodeURIComponent(nextUrl));
-                if(!nextResp.ok) break;
-                const nextHtml = await nextResp.text();
-                allHtml += nextHtml;
-                const newMatches = nextHtml.match(/data-post="\/bplarussiaru(\d+)"/g);
-                if(newMatches) {
-                    const newIds = newMatches.map(m => parseInt(m.match(/\d+/)[0]));
-                    postsIds = [...new Set([...postsIds, ...newIds])];
-                } else break;
-            }
-            
-            // Регулярное выражение для извлечения ID и текста сообщений
-            const postRegex = /data-post="bplarussiaru\/(\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\/div>/gis;
-            let matches = [];
-            let match;
-            while ((match = postRegex.exec(allHtml)) !== null) {
-                matches.push({
-                    id: parseInt(match[1]),
-                    text: match[2]
-                });
-            }
-            
-            // Сортируем по ID (новые сверху – для логики отбой/тревога важнее новые)
-            matches.sort((a,b) => b.id - a.id);
-            
-            console.log(`Найдено сообщений: ${matches.length}`);
-            
-            // Временное хранилище статусов: регион -> {status, postId}
-            let regionStatus = {};
-            
-            for(let msg of matches) {
-                let cleanText = msg.text.replace(/<.*?>/g, " ").toLowerCase();
-                cleanText = cleanText.replace(/\s+/g, " ").trim();
-                
-                // Определяем регионы в сообщении
-                let matchedRegions = [];
-                for (let [officialName, keywords] of Object.entries(regionAliases)) {
-                    if (keywords.some(kw => cleanText.includes(kw))) {
-                        matchedRegions.push(officialName);
-                    }
-                }
-                if (matchedRegions.length === 0) continue;
-                
-                // Проверяем наличие отбоя или угрозы
-                const isOtboy = cleanText.includes("отбой");
-                const isAlert = cleanText.includes("опасность") || 
-                                cleanText.includes("бпла") || 
-                                cleanText.includes("ракета") || 
-                                cleanText.includes("ракет") ||
-                                cleanText.includes("нет угрозы") ||
-                                cleanText.includes("авиацион") ||
-                                cleanText.includes("угроза") ||
-                                cleanText.includes("взрыв") ||
-                                cleanText.includes("атака");
-                
-                for(let region of matchedRegions) {
-                    const current = regionStatus[region];
-                    // Если уже есть более позднее сообщение (с большим ID) – не перезаписываем
-                    if(current && current.postId > msg.id) continue;
-                    
-                    if(isOtboy) {
-                        regionStatus[region] = { status: "clear", postId: msg.id };
-                    } else if(isAlert) {
-                        regionStatus[region] = { status: "alert", postId: msg.id };
-                    }
-                }
-            }
-            
-            // Формируем финальные активные тревоги
-            const finalAlerts = {};
-            for(let [region, data] of Object.entries(regionStatus)) {
-                if(data.status === "alert") {
-                    finalAlerts[region] = true;
-                }
-            }
-            
-            console.log("Активные тревоги:", finalAlerts);
-            return finalAlerts;
-            
-        } catch(error) {
-            console.error("Ошибка парсинга Telegram:", error);
-            // В случае ошибки возвращаем старые данные или пустой объект
-            return {};
-        }
-    }
-    
-    // Основная функция обновления: парсим и применяем к карте
-    async function fetchAndUpdateAlerts() {
-        try {
-            // Показываем процесс обновления
-            document.getElementById("updateTime").innerHTML = "🔄 обновление...";
-            
-            const newAlerts = await parseTelegramAlerts();
-            // Преобразуем в формат { "регион": true }
-            activeAlerts = newAlerts;
-            
-            applyAlertStyles();
-            
-            // Дополнительно сохраняем в localStorage для отладки (необязательно)
-            localStorage.setItem("lastAlerts", JSON.stringify(activeAlerts));
-            
-        } catch(err) {
-            console.error("Не удалось обновить тревоги:", err);
-            document.getElementById("updateTime").innerHTML = "⚠️ Ошибка обновления";
-            // Пробуем загрузить из кэша
-            const cached = localStorage.getItem("lastAlerts");
-            if(cached) {
-                try {
-                    activeAlerts = JSON.parse(cached);
-                    applyAlertStyles();
-                } catch(e) {}
-            }
-        }
-    }
-    
-    // Ручное обновление по клику (можно добавить кнопку, но по таймеру работает)
-    // Также добавим обработчик видимости страницы, чтобы не грузить фон
-    document.addEventListener("visibilitychange", () => {
-        if(!document.hidden && regionsLayer) {
-            fetchAndUpdateAlerts();
-        }
-    });
-    
-    // Дополнительно: при загрузке карты, если задержка, пробуем еще раз
-    window.addEventListener("load", () => {
-        setTimeout(() => {
-            if(regionsLayer) fetchAndUpdateAlerts();
-        }, 1000);
-    });
-</script>
-</body>
-</html>
+fetch(geojsonUrl).then(r=>r.json()).then(data=>{
+ regionsLayer=L.geoJSON(data,{
+   style:f=>({color:"#555",weight:1,fillColor:normalColor,fillOpacity:0.7}),
+   onEachFeature:(feature,layer)=>{
+     if(feature.properties && feature.properties.name){
+       layer.bindPopup(`<b>${feature.properties.name}</b><br>Сп
