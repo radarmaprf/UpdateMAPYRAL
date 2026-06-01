@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Air Alert Map — locatorru + bplarussiaru</title>
+    <title>Air Alert Map — locatorru</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -334,7 +334,7 @@
     };
 
     // ===========================================
-    // 7. ПАРСИНГ ДВУХ КАНАЛОВ (locatorru и bplarussiaru)
+    // 7. ПАРСИНГ ТОЛЬКО ОДНОГО КАНАЛА: locatorru
     // ===========================================
     const proxies = [
         "https://api.allorigins.win/raw?url=",
@@ -343,10 +343,7 @@
         "https://thingproxy.freeboard.io/fetch/"
     ];
 
-    const channels = [
-        { name: "locatorru", url: "https://t.me/s/locatorru" },
-        { name: "bplarussiaru", url: "https://t.me/s/bplarussiaru" }
-    ];
+    const channel = { name: "locatorru", url: "https://t.me/s/locatorru" };
 
     async function fetchWithProxy(url, proxyList) {
         for (let proxy of proxyList) {
@@ -377,11 +374,11 @@
         return patterns.some(p => p.test(text));
     }
 
-    async function fetchChannelPosts(channel) {
+    async function fetchChannelPosts() {
         try {
             const html = await fetchWithProxy(channel.url, proxies);
-            // Регулярка захватывает посты с id и текстом для любого канала (locatorru, bplarussiaru)
-            const regex = new RegExp(`data-post="(?:${channel.name}|bplarussiaru|locatorru)\\/(\\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\\/div>`, 'gis');
+            // Регулярка для канала locatorru
+            const regex = /data-post="locatorru\/(\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\/div>/gis;
             const posts = [];
             let m;
             while ((m = regex.exec(html)) !== null) {
@@ -398,18 +395,12 @@
     }
 
     async function parseTelegramAlerts() {
-        // Собираем посты со всех каналов
-        let allPosts = [];
-        for (const ch of channels) {
-            const posts = await fetchChannelPosts(ch);
-            allPosts = allPosts.concat(posts);
-        }
-        if (allPosts.length === 0) return {};
+        const posts = await fetchChannelPosts();
+        if (posts.length === 0) return {};
 
-        // Сортируем по id (новые - больше id)
-        allPosts.sort((a,b) => b.id - a.id);
-        console.log(`Всего постов: ${allPosts.length}, анализируем первые 50 свежих`);
-        const fresh = allPosts.slice(0, 60);
+        posts.sort((a,b) => b.id - a.id);
+        console.log(`Всего постов: ${posts.length}, анализируем первые 50 свежих`);
+        const fresh = posts.slice(0, 60);
 
         const tempLevels = {};
         let globalClearTriggered = false;
@@ -424,7 +415,6 @@
                 continue;
             }
 
-            // Если уже был глобальный отбой, но попался более свежий пост без отбоя — продолжаем
             let matched = [];
             for (const [official, keys] of Object.entries(regionAliases)) {
                 if (keys.some(kw => text.includes(kw))) {
@@ -449,13 +439,11 @@
             if (level === null) continue;
 
             for (const reg of matched) {
-                // Если ранее был глобальный отбой, то он обнулил всё, и теперь новые посты задают статус
                 tempLevels[reg] = level;
             }
         }
 
-        // Если глобальный отбой не встретился, но были посты с отбоем по конкретным регионам — они уже обработаны
-        console.log("Финальные уровни тревог (два канала):", tempLevels);
+        console.log("Финальные уровни тревог (только locatorru):", tempLevels);
         return tempLevels;
     }
 
@@ -468,21 +456,18 @@
         try {
             const newData = await parseTelegramAlerts();
             let changed = false;
-            // Установка новых уровней
             for (const [reg, lvl] of Object.entries(newData)) {
                 if (currentLevels[reg] !== lvl) {
                     currentLevels[reg] = lvl;
                     changed = true;
                 }
             }
-            // Сброс регионов, которых нет в новых данных, но были активны (кроме тех, что в newData)
             for (const reg in currentLevels) {
                 if (!(reg in newData) && currentLevels[reg] !== 0) {
                     currentLevels[reg] = 0;
                     changed = true;
                 }
             }
-            // Для быстрых кругов тоже сброс, если они не упомянуты
             for (const r of quickRegions) {
                 if (!(r.name in newData) && currentLevels[r.name] !== 0) {
                     currentLevels[r.name] = 0;
