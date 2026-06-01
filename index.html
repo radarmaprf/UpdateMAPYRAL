@@ -155,8 +155,8 @@
 
 <div class="legend">
     <div class="legend-item"><div class="legend-color" style="background: #6c757d;"></div> <span>⚪ Отбой / Спокойно</span></div>
+    <div class="legend-item"><div class="legend-color" style="background: #28a745;"></div> <span>🟢 Внимание (начальная стадия)</span></div>
     <div class="legend-item"><div class="legend-color" style="background: #ffc107;"></div> <span>🟡 Опасность БПЛА</span></div>
-    <div class="legend-item"><div class="legend-color" style="background: #dc3545;"></div> <span>🔴 Внимание по БПЛА</span></div>
     <div class="legend-item"><div class="legend-color" style="background: #800020;"></div> <span>🏴‍☠️ Ракетная опасность</span></div>
 </div>
 
@@ -183,13 +183,17 @@
     }).addTo(map);
 
     // ===========================================
-    // ЦВЕТА ТРЕВОГ
+    // ЦВЕТА ТРЕВОГ (НОВАЯ СХЕМА)
+    // level 0: отбой/спокойно - серый #6c757d
+    // level 1: внимание - зеленый #28a745
+    // level 2: опасность БПЛА - желтый #ffc107
+    // level 3: ракетная опасность - бордовый #800020
     // ===========================================
     const colors = {
-        clear: "#6c757d",
-        droneDanger: "#ffc107",
-        droneAttention: "#dc3545",
-        rocket: "#800020"
+        clear: "#6c757d",      // отбой/спокойно - серый
+        attention: "#28a745",  // внимание - зеленый
+        droneDanger: "#ffc107", // опасность БПЛА - желтый
+        rocket: "#800020"       // ракетная опасность - бордовый
     };
 
     let currentAlertLevels = {};
@@ -286,7 +290,6 @@
         "Чувашская Республика": ["чувашия", "чувашская республика"],
         "Пермский край": ["пермский край", "пермь"],
         "Кировская область": ["кировская область", "киров"],
-        "Нижегородская область": ["нижегородская область", "нижний новгород"],
         "Оренбургская область": ["оренбургская область", "оренбург"],
         "Пензенская область": ["пензенская область", "пенза"],
         "Самарская область": ["самарская область", "самара"],
@@ -366,14 +369,12 @@
                                 feature.properties?.region ||
                                 "";
                 
-                // Нормализуем имя для поиска
                 let normalizedName = regionName.replace(/^Республика\s/, '').replace(/^город\s/, '');
-                
                 const level = currentAlertLevels[normalizedName] || currentAlertLevels[regionName] || 0;
                 let fillColor;
                 if (level === 0) fillColor = colors.clear;
-                else if (level === 1) fillColor = colors.droneDanger;
-                else if (level === 2) fillColor = colors.droneAttention;
+                else if (level === 1) fillColor = colors.attention;
+                else if (level === 2) fillColor = colors.droneDanger;
                 else fillColor = colors.rocket;
                 
                 return {
@@ -403,11 +404,11 @@
                         levelText = "⚪ Отбой / Спокойно";
                         levelColor = "#adb5bd";
                     } else if (level === 1) {
+                        levelText = "🟢 Внимание (начальная стадия)";
+                        levelColor = "#6fcf97";
+                    } else if (level === 2) {
                         levelText = "🟡 Опасность БПЛА";
                         levelColor = "#ffc107";
-                    } else if (level === 2) {
-                        levelText = "🔴 Внимание! Угроза БПЛА";
-                        levelColor = "#ff6b6b";
                     } else {
                         levelText = "💀 РАКЕТНАЯ ОПАСНОСТЬ! Укрытие!";
                         levelColor = "#c41e3a";
@@ -455,8 +456,8 @@
             
             let fillColor;
             if (level === 0) fillColor = colors.clear;
-            else if (level === 1) fillColor = colors.droneDanger;
-            else if (level === 2) fillColor = colors.droneAttention;
+            else if (level === 1) fillColor = colors.attention;
+            else if (level === 2) fillColor = colors.droneDanger;
             else fillColor = colors.rocket;
             
             layer.setStyle({
@@ -474,11 +475,11 @@
                     levelText = "⚪ Отбой / Спокойно";
                     levelColor = "#adb5bd";
                 } else if (level === 1) {
+                    levelText = "🟢 Внимание (начальная стадия)";
+                    levelColor = "#6fcf97";
+                } else if (level === 2) {
                     levelText = "🟡 Опасность БПЛА";
                     levelColor = "#ffc107";
-                } else if (level === 2) {
-                    levelText = "🔴 Внимание! Угроза БПЛА";
-                    levelColor = "#ff6b6b";
                 } else {
                     levelText = "💀 РАКЕТНАЯ ОПАСНОСТЬ! Укрытие!";
                     levelColor = "#c41e3a";
@@ -498,8 +499,8 @@
         const alertCount = Object.values(currentAlertLevels).filter(l => l > 0).length;
         const badge = document.getElementById('statusBadge');
         if (alertCount > 0) {
-            badge.innerHTML = `🔴 Тревог: ${alertCount}`;
-            badge.style.color = "#ff6b6b";
+            badge.innerHTML = `⚠️ Тревог: ${alertCount}`;
+            badge.style.color = "#ffc107";
         } else {
             const now = new Date();
             const timeStr = now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
@@ -509,7 +510,7 @@
     }
 
     // ===========================================
-    // ПАРСИНГ TELEGRAM (ТОЛЬКО ПРЯМЫЕ УПОМИНАНИЯ)
+    // ПАРСИНГ TELEGRAM
     // ===========================================
     async function parseTelegramAlerts() {
         const proxyUrl = "https://api.allorigins.win/raw?url=";
@@ -520,7 +521,6 @@
             if (!resp.ok) throw new Error("Ошибка загрузки");
             let html = await resp.text();
             
-            // Догружаем еще одну страницу старых постов
             let allHtml = html;
             const firstMatch = html.match(/data-post="\/bplarussiaru(\d+)"/);
             if (firstMatch) {
@@ -549,11 +549,9 @@
             for (const post of posts) {
                 const text = post.text;
                 
-                // Ищем регионы в тексте сообщения
                 let matchedRegions = [];
                 for (const [official, keywords] of Object.entries(allRegions)) {
                     for (const kw of keywords) {
-                        // Точное совпадение слова (не просто вхождение)
                         const regex = new RegExp(`\\b${kw}\\b`, 'i');
                         if (regex.test(text)) {
                             matchedRegions.push(official);
@@ -564,11 +562,10 @@
                 
                 if (matchedRegions.length === 0) continue;
                 
-                // Определяем тип угрозы
                 let level = 0;
                 const isOtboy = /\bотбой\b/i.test(text);
+                const isAttention = /\bвнимание\b/i.test(text) && !/\b(бпла|беспилот|дрон|ракет)\b/i.test(text);
                 const isDroneDanger = /\b(бпла|беспилот|дрон)\b/i.test(text);
-                const isDroneAttention = /\bвнимание\b/i.test(text) && isDroneDanger;
                 const isRocket = /\b(ракет|ракетная|баллистич|крылат)\b/i.test(text);
                 const isCritical = /\b(критическ|срочно|немедленно)\b/i.test(text);
                 
@@ -576,9 +573,9 @@
                     level = 0;
                 } else if (isRocket || isCritical) {
                     level = 3;
-                } else if (isDroneAttention) {
-                    level = 2;
                 } else if (isDroneDanger) {
+                    level = 2;
+                } else if (isAttention) {
                     level = 1;
                 } else if (/\b(угроза|тревога|опасность)\b/i.test(text)) {
                     level = 1;
@@ -612,16 +609,13 @@
             const levels = await parseTelegramAlerts();
             let changed = false;
             
-            // Сбрасываем все тревоги
             const newAlertLevels = {};
             
-            // Устанавливаем новые тревоги
             for (const [reg, lvl] of Object.entries(levels)) {
                 newAlertLevels[reg] = lvl;
                 if (currentAlertLevels[reg] !== lvl) changed = true;
             }
             
-            // Проверяем снятые тревоги
             for (const [reg, lvl] of Object.entries(currentAlertLevels)) {
                 if (lvl > 0 && !levels[reg]) {
                     changed = true;
@@ -644,10 +638,8 @@
         }
     }
     
-    // Запускаем загрузку границ
     loadGeoJSON(geojsonUrl);
     
-    // Плавный зум
     map.on('zoomend', function() {
         if (map.getZoom() > 7) {
             map.flyTo(map.getCenter(), map.getZoom(), { duration: 0.3 });
