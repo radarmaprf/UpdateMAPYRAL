@@ -155,7 +155,7 @@
 
 <div class="legend">
     <div class="legend-item"><div class="legend-color" style="background: #6c757d;"></div> <span>⚪ Отбой / Спокойно</span></div>
-    <div class="legend-item"><div class="legend-color" style="background: #28a745;"></div> <span>🟢 Внимание (начальная стадия)</span></div>
+    <div class="legend-item"><div class="legend-color" style="background: #28a745;"></div> <span>🟢 Внимание / Угроза</span></div>
     <div class="legend-item"><div class="legend-color" style="background: #ffc107;"></div> <span>🟡 Опасность БПЛА</span></div>
     <div class="legend-item"><div class="legend-color" style="background: #800020;"></div> <span>🏴‍☠️ Ракетная опасность</span></div>
 </div>
@@ -194,6 +194,7 @@
 
     let currentAlertLevels = {};
     let regionsLayer = null;
+    let regionNameMapping = {}; // Для маппинга GeoJSON имен к нашим ключам
 
     // ===========================================
     // ЧАСЫ
@@ -213,156 +214,180 @@
         if (!name) return "";
         const words = name.split(' ');
         if (words.length === 1) return words[0];
+        if (words.length === 2) return `${words[0]}<br>${words[1]}`;
         return `${words[0]}<br>${words.slice(1).join(' ')}`;
     }
 
     // ===========================================
-    // ВСЕ РЕГИОНЫ РФ (расширенный список)
+    // ВСЕ РЕГИОНЫ РФ (ключ -> название для отображения)
     // ===========================================
-    const allRegions = {
-        // Центральный ФО
-        "Москва": ["москва", "мск", "г москва", "город москва"],
+    const regionKeys = {
+        "Москва": "Москва",
+        "Московская область": "Московская область",
+        "Санкт-Петербург": "Санкт-Петербург",
+        "Ленинградская область": "Ленинградская область",
+        "Белгородская область": "Белгородская область",
+        "Брянская область": "Брянская область",
+        "Владимирская область": "Владимирская область",
+        "Воронежская область": "Воронежская область",
+        "Ивановская область": "Ивановская область",
+        "Калужская область": "Калужская область",
+        "Костромская область": "Костромская область",
+        "Курская область": "Курская область",
+        "Липецкая область": "Липецкая область",
+        "Нижегородская область": "Нижегородская область",
+        "Новгородская область": "Новгородская область",
+        "Орловская область": "Орловская область",
+        "Пензенская область": "Пензенская область",
+        "Псковская область": "Псковская область",
+        "Рязанская область": "Рязанская область",
+        "Смоленская область": "Смоленская область",
+        "Тамбовская область": "Тамбовская область",
+        "Тверская область": "Тверская область",
+        "Тульская область": "Тульская область",
+        "Ярославская область": "Ярославская область",
+        "Краснодарский край": "Краснодарский край",
+        "Ставропольский край": "Ставропольский край",
+        "Ростовская область": "Ростовская область",
+        "Волгоградская область": "Волгоградская область",
+        "Астраханская область": "Астраханская область",
+        "Республика Татарстан": "Татарстан",
+        "Республика Башкортостан": "Башкортостан",
+        "Республика Крым": "Крым",
+        "Калининградская область": "Калининградская область",
+        "Свердловская область": "Свердловская область",
+        "Челябинская область": "Челябинская область",
+        "Новосибирская область": "Новосибирская область",
+        "Омская область": "Омская область",
+        "Томская область": "Томская область",
+        "Кемеровская область": "Кемеровская область",
+        "Иркутская область": "Иркутская область",
+        "Красноярский край": "Красноярский край",
+        "Алтайский край": "Алтайский край",
+        "Забайкальский край": "Забайкальский край",
+        "Приморский край": "Приморский край",
+        "Хабаровский край": "Хабаровский край",
+        "Амурская область": "Амурская область",
+        "Сахалинская область": "Сахалинская область",
+        "Магаданская область": "Магаданская область",
+        "Камчатский край": "Камчатский край",
+        "Архангельская область": "Архангельская область",
+        "Мурманская область": "Мурманская область",
+        "Республика Карелия": "Карелия",
+        "Республика Коми": "Коми",
+        "Пермский край": "Пермский край",
+        "Ханты-Мансийский АО": "ХМАО",
+        "Ямало-Ненецкий АО": "ЯНАО",
+        "Республика Дагестан": "Дагестан",
+        "Чеченская Республика": "Чечня",
+        "Республика Адыгея": "Адыгея",
+        "Республика Бурятия": "Бурятия",
+        "Республика Саха (Якутия)": "Якутия",
+        "Республика Алтай": "Алтай"
+    };
+
+    // Синонимы для поиска в сообщениях
+    const regionAliases = {
+        "Москва": ["москва", "мск", "г москва", "москве"],
         "Московская область": ["московская область", "подмосковье", "мо обл", "московская обл"],
-        "Белгородская область": ["белгородская область", "белгород", "белгородская обл"],
-        "Брянская область": ["брянская область", "брянск", "брянская обл"],
-        "Владимирская область": ["владимирская область", "владимир"],
-        "Воронежская область": ["воронежская область", "воронеж"],
-        "Ивановская область": ["ивановская область", "иваново"],
-        "Калужская область": ["калужская область", "калуга"],
-        "Костромская область": ["костромская область", "кострома"],
-        "Курская область": ["курская область", "курск"],
-        "Липецкая область": ["липецкая область", "липецк"],
-        "Нижегородская область": ["нижегородская область", "нижний новгород"],
-        "Орловская область": ["орловская область", "орел"],
-        "Рязанская область": ["рязанская область", "рязань"],
-        "Смоленская область": ["смоленская область", "смоленск"],
-        "Тамбовская область": ["тамбовская область", "тамбов"],
-        "Тверская область": ["тверская область", "тверь"],
-        "Тульская область": ["тульская область", "тула"],
-        "Ярославская область": ["ярославская область", "ярославль"],
-        
-        // Северо-Западный ФО
-        "Санкт-Петербург": ["санкт-петербург", "питер", "спб"],
+        "Санкт-Петербург": ["санкт-петербург", "питер", "спб", "петербург"],
         "Ленинградская область": ["ленинградская область", "ленобласть"],
-        "Архангельская область": ["архангельская область", "архангельск"],
-        "Вологодская область": ["вологодская область", "вологда"],
+        "Белгородская область": ["белгородская область", "белгород", "белгороде"],
+        "Брянская область": ["брянская область", "брянск", "брянске"],
+        "Воронежская область": ["воронежская область", "воронеж", "воронеже"],
+        "Курская область": ["курская область", "курск", "курске"],
+        "Краснодарский край": ["краснодарский край", "кубань", "краснодар", "краснодаре"],
+        "Ростовская область": ["ростовская область", "ростов", "ростове"],
+        "Республика Татарстан": ["татарстан", "казань", "республика татарстан"],
+        "Республика Крым": ["крым", "республика крым", "крыму"],
         "Калининградская область": ["калининградская область", "калининград"],
-        "Республика Карелия": ["карелия", "республика карелия"],
-        "Республика Коми": ["коми", "республика коми"],
-        "Мурманская область": ["мурманская область", "мурманск"],
-        "Новгородская область": ["новгородская область", "великий новгород", "новгород"],
-        "Псковская область": ["псковская область", "псков"],
-        
-        // Южный ФО
-        "Республика Адыгея": ["адыгея", "республика адыгея"],
-        "Республика Калмыкия": ["калмыкия", "республика калмыкия"],
-        "Республика Крым": ["крым", "республика крым"],
-        "Краснодарский край": ["краснодарский край", "кубань", "краснодар"],
-        "Астраханская область": ["астраханская область", "астрахань"],
-        "Волгоградская область": ["волгоградская область", "волгоград"],
-        "Ростовская область": ["ростовская область", "ростов", "ростов-на-дону"],
-        
-        // Северо-Кавказский ФО
-        "Республика Дагестан": ["дагестан", "республика дагестан"],
-        "Республика Ингушетия": ["ингушетия", "республика ингушетия"],
-        "Кабардино-Балкарская Республика": ["кабардино-балкария", "кбр"],
-        "Карачаево-Черкесская Республика": ["карачаево-черкесия", "кчр"],
-        "Республика Северная Осетия": ["северная осетия", "осетия"],
-        "Чеченская Республика": ["чечня", "чеченская"],
-        "Ставропольский край": ["ставропольский край", "ставрополь"],
-        
-        // Приволжский ФО
-        "Республика Башкортостан": ["башкортостан", "республика башкортостан", "уфа"],
-        "Республика Марий Эл": ["марий эл", "республика марий эл"],
-        "Республика Мордовия": ["мордовия", "республика мордовия"],
-        "Республика Татарстан": ["татарстан", "республика татарстан", "казань"],
-        "Удмуртская Республика": ["удмуртия", "удмуртская республика"],
-        "Чувашская Республика": ["чувашия", "чувашская республика"],
-        "Пермский край": ["пермский край", "пермь"],
-        "Кировская область": ["кировская область", "киров"],
-        "Оренбургская область": ["оренбургская область", "оренбург"],
-        "Пензенская область": ["пензенская область", "пенза"],
-        "Самарская область": ["самарская область", "самара"],
-        "Саратовская область": ["саратовская область", "саратов"],
-        "Ульяновская область": ["ульяновская область", "ульяновск"],
-        
-        // Уральский ФО
-        "Курганская область": ["курганская область", "курган"],
         "Свердловская область": ["свердловская область", "екатеринбург"],
-        "Тюменская область": ["тюменская область", "тюмень"],
         "Челябинская область": ["челябинская область", "челябинск"],
-        "Ханты-Мансийский АО": ["хмао", "ханты-мансийский", "сургут"],
-        "Ямало-Ненецкий АО": ["янао", "ямало-ненецкий"],
-        
-        // Сибирский ФО
-        "Республика Алтай": ["алтай", "республика алтай"],
-        "Республика Бурятия": ["бурятия", "республика бурятия", "улан-удэ"],
-        "Республика Тыва": ["тыва", "тува", "республика тыва"],
-        "Республика Хакасия": ["хакасия", "республика хакасия"],
-        "Алтайский край": ["алтайский край", "барнаул"],
-        "Забайкальский край": ["забайкальский край", "чита"],
-        "Красноярский край": ["краснодарский край", "краснодар"],
-        "Иркутская область": ["иркутская область", "иркутск"],
-        "Кемеровская область": ["кемеровская область", "кемерово", "кузбасс"],
         "Новосибирская область": ["новосибирская область", "новосибирск"],
-        "Омская область": ["омская область", "омск"],
-        "Томская область": ["томская область", "томск"],
-        
-        // Дальневосточный ФО
-        "Республика Саха (Якутия)": ["якутия", "саха", "якутск"],
-        "Камчатский край": ["камчатский край", "камчатка"],
-        "Приморский край": ["приморский край", "владивосток", "приморье"],
+        "Самарская область": ["самарская область", "самара"],
+        "Нижегородская область": ["нижегородская область", "нижний новгород"],
+        "Волгоградская область": ["волгоградская область", "волгоград"],
+        "Саратовская область": ["саратовская область", "саратов"],
+        "Пермский край": ["пермский край", "пермь"],
+        "Красноярский край": ["красноярский край", "красноярск"],
+        "Иркутская область": ["иркутская область", "иркутск"],
         "Хабаровский край": ["хабаровский край", "хабаровск"],
-        "Амурская область": ["амурская область", "благовещенск"],
-        "Магаданская область": ["магаданская область", "магадан"],
-        "Сахалинская область": ["сахалинская область", "сахалин"],
-        "Еврейская АО": ["еврейская", "еао"],
-        "Чукотский АО": ["чукотка", "чукотский"]
+        "Приморский край": ["приморский край", "владивосток", "приморье"],
+        "Республика Дагестан": ["дагестан", "республика дагестан"],
+        "Республика Башкортостан": ["башкортостан", "уфа"],
+        "Республика Карелия": ["карелия", "республика карелия"]
     };
 
     // ===========================================
     // ЗАГРУЗКА ГРАНИЦ С GITHUB
     // ===========================================
     const geojsonUrl = "https://raw.githubusercontent.com/azatkh/ru-regions-geojson/main/regions.geojson";
-    const fallbackUrl = "https://raw.githubusercontent.com/codeforgermany/click_that_hood/main/public/data/russia.geojson";
     
-    function loadGeoJSON(url, isFallback = false) {
-        fetch(url)
+    function loadGeoJSON() {
+        fetch(geojsonUrl)
             .then(response => {
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 return response.json();
             })
             .then(data => {
-                console.log("GeoJSON загружен:", url);
+                console.log("GeoJSON загружен");
                 document.getElementById('loader').style.display = 'none';
                 initRegionsLayer(data);
             })
             .catch(error => {
-                console.error("Ошибка загрузки из", url, error);
-                if (!isFallback) {
-                    loadGeoJSON(fallbackUrl, true);
-                } else {
-                    document.getElementById('loader').innerHTML = '<span>❌ Ошибка загрузки границ</span>';
-                    setTimeout(() => {
-                        document.getElementById('loader').style.display = 'none';
-                    }, 3000);
-                }
+                console.error("Ошибка загрузки:", error);
+                document.getElementById('loader').innerHTML = '<span>❌ Ошибка загрузки границ. Использую запасной вариант...</span>';
+                loadFallbackGeoJSON();
+            });
+    }
+
+    function loadFallbackGeoJSON() {
+        const fallbackUrl = "https://raw.githubusercontent.com/codeforgermany/click_that_hood/main/public/data/russia.geojson";
+        fetch(fallbackUrl)
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('loader').style.display = 'none';
+                initRegionsLayer(data);
+            })
+            .catch(err => {
+                document.getElementById('loader').innerHTML = '<span>❌ Ошибка загрузки. Карта может работать некорректно.</span>';
+                setTimeout(() => {
+                    document.getElementById('loader').style.display = 'none';
+                }, 3000);
             });
     }
 
     function initRegionsLayer(geoJsonData) {
-        regionsLayer = L.geoJSON(geoJsonData, {
-            style: function(feature) {
-                let regionName = feature.properties?.name || feature.properties?.NAME || feature.properties?.admin_name || "";
-                let level = 0;
-                
-                for (const [key, keywords] of Object.entries(allRegions)) {
-                    if (regionName.toLowerCase().includes(key.toLowerCase()) || 
-                        keywords.some(kw => regionName.toLowerCase().includes(kw.toLowerCase()))) {
-                        level = currentAlertLevels[key] || 0;
+        // Создаем маппинг GeoJSON имен к нашим ключам
+        geoJsonData.features.forEach(feature => {
+            let geoName = feature.properties?.name || feature.properties?.NAME || feature.properties?.admin_name || "";
+            if (geoName) {
+                geoName = geoName.toLowerCase();
+                for (const [key, displayName] of Object.entries(regionKeys)) {
+                    if (geoName.includes(key.toLowerCase()) || key.toLowerCase().includes(geoName)) {
+                        regionNameMapping[geoName] = key;
                         break;
                     }
                 }
+                // Прямое сопоставление
+                if (!regionNameMapping[geoName]) {
+                    for (const alias of Object.keys(regionAliases)) {
+                        if (geoName.includes(alias.toLowerCase())) {
+                            regionNameMapping[geoName] = alias;
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+        
+        console.log("Маппинг регионов:", regionNameMapping);
+
+        regionsLayer = L.geoJSON(geoJsonData, {
+            style: function(feature) {
+                let geoName = (feature.properties?.name || feature.properties?.NAME || feature.properties?.admin_name || "").toLowerCase();
+                let regionKey = regionNameMapping[geoName];
+                let level = regionKey ? (currentAlertLevels[regionKey] || 0) : 0;
                 
                 let fillColor;
                 if (level === 0) fillColor = colors.clear;
@@ -380,19 +405,13 @@
                 };
             },
             onEachFeature: function(feature, layer) {
-                let regionName = feature.properties?.name || feature.properties?.NAME || feature.properties?.admin_name || "";
+                let geoName = feature.properties?.name || feature.properties?.NAME || feature.properties?.admin_name || "";
+                let regionKey = regionNameMapping[geoName.toLowerCase()] || geoName;
+                let displayName = regionKeys[regionKey] || geoName;
                 
-                if (regionName) {
-                    const formattedName = formatRegionName(regionName);
-                    let level = 0;
-                    
-                    for (const [key, keywords] of Object.entries(allRegions)) {
-                        if (regionName.toLowerCase().includes(key.toLowerCase()) || 
-                            keywords.some(kw => regionName.toLowerCase().includes(kw.toLowerCase()))) {
-                            level = currentAlertLevels[key] || 0;
-                            break;
-                        }
-                    }
+                if (displayName) {
+                    const formattedName = formatRegionName(displayName);
+                    let level = regionKey ? (currentAlertLevels[regionKey] || 0) : 0;
                     
                     let levelText = "";
                     let levelColor = "";
@@ -400,13 +419,13 @@
                         levelText = "⚪ Отбой / Спокойно";
                         levelColor = "#adb5bd";
                     } else if (level === 1) {
-                        levelText = "🟢 Внимание (начальная стадия)";
+                        levelText = "🟢 Внимание / Угроза";
                         levelColor = "#6fcf97";
                     } else if (level === 2) {
                         levelText = "🟡 Опасность БПЛА";
                         levelColor = "#ffc107";
                     } else {
-                        levelText = "💀 РАКЕТНАЯ ОПАСНОСТЬ! Укрытие!";
+                        levelText = "💀 РАКЕТНАЯ ОПАСНОСТЬ!";
                         levelColor = "#c41e3a";
                     }
                     
@@ -418,6 +437,9 @@
                             <span style="color:${levelColor}; font-size:0.9rem;">${levelText}</span>
                         </div>
                     `, { className: 'custom-popup' });
+                    
+                    // Сохраняем ключ региона для быстрого доступа
+                    layer.regionKey = regionKey;
                 }
             }
         }).addTo(map);
@@ -427,23 +449,17 @@
         }, 200);
         
         fetchAndUpdateAlerts();
-        setInterval(fetchAndUpdateAlerts, 35000);
+        setInterval(fetchAndUpdateAlerts, 30000);
     }
 
     function updateRegionColors() {
         if (!regionsLayer) return;
         
         regionsLayer.eachLayer(layer => {
-            let regionName = layer.feature?.properties?.name || layer.feature?.properties?.NAME || layer.feature?.properties?.admin_name || "";
-            let level = 0;
+            let regionKey = layer.regionKey;
+            if (!regionKey) return;
             
-            for (const [key, keywords] of Object.entries(allRegions)) {
-                if (regionName.toLowerCase().includes(key.toLowerCase()) || 
-                    keywords.some(kw => regionName.toLowerCase().includes(kw.toLowerCase()))) {
-                    level = currentAlertLevels[key] || 0;
-                    break;
-                }
-            }
+            let level = currentAlertLevels[regionKey] || 0;
             
             let fillColor;
             if (level === 0) fillColor = colors.clear;
@@ -459,20 +475,21 @@
             });
             
             if (layer.getPopup()) {
-                const formattedName = formatRegionName(regionName);
+                let displayName = regionKeys[regionKey] || regionKey;
+                const formattedName = formatRegionName(displayName);
                 let levelText = "";
                 let levelColor = "";
                 if (level === 0) {
                     levelText = "⚪ Отбой / Спокойно";
                     levelColor = "#adb5bd";
                 } else if (level === 1) {
-                    levelText = "🟢 Внимание (начальная стадия)";
+                    levelText = "🟢 Внимание / Угроза";
                     levelColor = "#6fcf97";
                 } else if (level === 2) {
                     levelText = "🟡 Опасность БПЛА";
                     levelColor = "#ffc107";
                 } else {
-                    levelText = "💀 РАКЕТНАЯ ОПАСНОСТЬ! Укрытие!";
+                    levelText = "💀 РАКЕТНАЯ ОПАСНОСТЬ!";
                     levelColor = "#c41e3a";
                 }
                 
@@ -501,7 +518,7 @@
     }
 
     // ===========================================
-    // ПАРСИНГ TELEGRAM (канал radarrussiia)
+    // ПАРСИНГ TELEGRAM
     // ===========================================
     async function parseTelegramAlerts() {
         const proxyUrl = "https://api.allorigins.win/raw?url=";
@@ -510,12 +527,10 @@
         try {
             console.log("Парсинг канала:", channel);
             const resp = await fetch(proxyUrl + encodeURIComponent(channel));
-            if (!resp.ok) throw new Error("Ошибка загрузки канала");
+            if (!resp.ok) throw new Error("Ошибка загрузки");
             let html = await resp.text();
             
-            console.log("HTML получен, длина:", html.length);
-            
-            // Регулярное выражение для поиска постов
+            // Ищем все сообщения
             const postRegex = /data-post="radarrussiia\/(\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\/div>/gis;
             const posts = [];
             let m;
@@ -528,39 +543,24 @@
             
             console.log("Найдено постов:", posts.length);
             
-            // Если постов мало, пробуем подгрузить еще
-            if (posts.length < 5) {
-                const firstMatch = html.match(/data-post="radarrussiia(\d+)"/);
-                if (firstMatch) {
-                    const oldestId = parseInt(firstMatch[1]);
-                    const nextUrl = `https://t.me/s/radarrussiia?before=${oldestId}`;
-                    const nextResp = await fetch(proxyUrl + encodeURIComponent(nextUrl));
-                    if (nextResp.ok) {
-                        const nextHtml = await nextResp.text();
-                        while ((m = postRegex.exec(nextHtml)) !== null) {
-                            posts.push({
-                                id: parseInt(m[1]),
-                                text: m[2].replace(/<[^>]*>/g, ' ').toLowerCase()
-                            });
-                        }
-                    }
-                }
-            }
+            // Показываем первые 5 сообщений для отладки
+            posts.slice(0, 5).forEach((p, i) => {
+                console.log(`Пост ${i+1}:`, p.text.substring(0, 200));
+            });
             
             posts.sort((a,b) => b.id - a.id);
-            console.log("Всего постов после сортировки:", posts.length);
             
             const tempLevels = {};
             
             for (const post of posts) {
                 const text = post.text;
-                console.log("Анализ поста:", text.substring(0, 100));
                 
+                // Ищем регионы в тексте
                 let matchedRegions = [];
-                for (const [official, keywords] of Object.entries(allRegions)) {
-                    for (const kw of keywords) {
-                        if (text.includes(kw)) {
-                            matchedRegions.push(official);
+                for (const [region, aliases] of Object.entries(regionAliases)) {
+                    for (const alias of aliases) {
+                        if (text.includes(alias)) {
+                            matchedRegions.push(region);
                             break;
                         }
                     }
@@ -568,13 +568,14 @@
                 
                 if (matchedRegions.length === 0) continue;
                 
-                console.log("Найдены регионы:", matchedRegions);
+                console.log("Найдены регионы:", matchedRegions, "в посте:", text.substring(0, 100));
                 
+                // Определяем уровень тревоги
                 let level = 0;
-                const isOtboy = /\bотбой\b/i.test(text);
-                const isAttention = /\bвнимание\b/i.test(text) && !/\b(бпла|беспилот|дрон|ракет)\b/i.test(text);
-                const isDrone = /\b(бпла|беспилот|дрон)\b/i.test(text);
+                const isOtboy = /\b(отбой|отменен|отменена|снята)\b/i.test(text);
                 const isRocket = /\b(ракет|ракетная|баллистич|крылат)\b/i.test(text);
+                const isDrone = /\b(бпла|беспилот|дрон|баражиру|шахед)\b/i.test(text);
+                const isAttention = /\b(внимание|угроза|опасность|тревога|атака)\b/i.test(text);
                 
                 if (isOtboy) {
                     level = 0;
@@ -582,11 +583,11 @@
                     level = 3;
                 } else if (isDrone) {
                     level = 2;
-                } else if (isAttention || /\b(угроза|опасность|тревога)\b/i.test(text)) {
+                } else if (isAttention) {
                     level = 1;
                 }
                 
-                console.log("Уровень тревоги:", level);
+                console.log("Уровень:", level);
                 
                 for (const region of matchedRegions) {
                     const existing = tempLevels[region];
@@ -623,6 +624,7 @@
                 }
             }
             
+            // Удаляем старые тревоги, которых нет в новых данных
             for (const reg of Object.keys(currentAlertLevels)) {
                 if (currentAlertLevels[reg] > 0 && !levels[reg]) {
                     delete currentAlertLevels[reg];
@@ -631,6 +633,7 @@
             }
             
             if (changed) {
+                console.log("Обновление цветов регионов");
                 updateRegionColors();
                 localStorage.setItem("alertCache", JSON.stringify(currentAlertLevels));
             }
@@ -644,7 +647,7 @@
         }
     }
     
-    loadGeoJSON(geojsonUrl);
+    loadGeoJSON();
     
     map.on('zoomend', function() {
         if (map.getZoom() > 7) {
