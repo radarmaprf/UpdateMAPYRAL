@@ -26,14 +26,16 @@
         }
         .legend-item { display: flex; align-items: center; gap: 8px; }
         .legend-color { width: 24px; height: 16px; border-radius: 4px; }
+        /* Увеличенная кнопка обновления */
         .update-btn {
             position: fixed; bottom: 20px; right: 20px; z-index: 2000;
-            background: rgba(0,0,0,0.75); backdrop-filter: blur(8px);
-            border: 1px solid rgba(255,255,255,0.2); border-radius: 30px;
-            padding: 6px 14px; color: white; font-size: 0.75rem;
-            cursor: pointer; transition: 0.2s; font-family: monospace;
+            background: rgba(0,0,0,0.8); backdrop-filter: blur(8px);
+            border: 1px solid rgba(255,255,255,0.3); border-radius: 40px;
+            padding: 10px 22px; color: white; font-size: 1rem;
+            font-weight: bold; cursor: pointer; transition: 0.2s;
+            font-family: monospace; letter-spacing: 0.5px;
         }
-        .update-btn:hover { background: #28a745; border-color: #28a745; }
+        .update-btn:hover { background: #28a745; border-color: #28a745; transform: scale(1.02); }
         .status {
             position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
             z-index: 2000; background: rgba(0,0,0,0.7); backdrop-filter: blur(8px);
@@ -49,7 +51,7 @@
             .clock { padding: 4px 12px; top: 10px; right: 10px; }
             .legend { bottom: 10px; left: 10px; padding: 8px 12px; font-size: 0.65rem; }
             .legend-color { width: 20px; height: 14px; }
-            .update-btn { bottom: 10px; right: 10px; padding: 5px 10px; font-size: 0.7rem; }
+            .update-btn { bottom: 10px; right: 10px; padding: 8px 16px; font-size: 0.85rem; }
             .status { bottom: 10px; font-size: 0.6rem; }
         }
     </style>
@@ -63,7 +65,7 @@
 <div class="legend">
     <div class="legend-item"><div class="legend-color" style="background: #6c757d;"></div> <span>⚪ Отбой / Спокойно</span></div>
     <div class="legend-item"><div class="legend-color" style="background: #ffc107;"></div> <span>🟡 Опасность БПЛА</span></div>
-    <div class="legend-item"><div class="legend-color" style="background: #dc3545;"></div> <span>🔴 Внимание по БПЛА</span></div>
+    <div class="legend-item"><div class="legend-color" style="background: #2ecc71;"></div> <span>🟢 Внимание по БПЛА</span></div>
     <div class="legend-item"><div class="legend-color" style="background: #800020;"></div> <span>🏴‍☠️ Ракетная опасность</span></div>
 </div>
 <button class="update-btn" id="updateBtn">🔄 Обновить</button>
@@ -82,12 +84,12 @@
     }).addTo(map);
 
     // ===========================================
-    // 2. ЦВЕТА
+    // 2. ЦВЕТА (внимание по БПЛА — зелёный)
     // ===========================================
     const colors = {
         clear: "#6c757d",
         danger: "#ffc107",
-        attention: "#dc3545",
+        attention: "#2ecc71",   // изменено на зелёный
         rocket: "#800020"
     };
     let currentLevels = {};
@@ -113,10 +115,9 @@
     }
 
     // ===========================================
-    // 4. КРУГИ ДЛЯ БЫСТРОГО СТАРТА
+    // 4. КРУГИ (Москва удалена, только Московская область)
     // ===========================================
     const quickRegions = [
-        { name:"Москва", lat:55.7558, lng:37.6173 },
         { name:"Московская область", lat:55.7558, lng:37.6173 },
         { name:"Санкт-Петербург", lat:59.94, lng:30.31 },
         { name:"Ленинградская область", lat:59.94, lng:30.31 },
@@ -141,7 +142,7 @@
         let text = "", color = "";
         if (level === 0) { text = "⚪ Отбой / Спокойно"; color = "#adb5bd"; }
         else if (level === 1) { text = "🟡 Опасность БПЛА"; color = "#ffc107"; }
-        else if (level === 2) { text = "🔴 Внимание! Угроза БПЛА"; color = "#ff8888"; }
+        else if (level === 2) { text = "🟢 Внимание! Угроза БПЛА"; color = "#2ecc71"; }
         else { text = "💀 РАКЕТНАЯ ОПАСНОСТЬ! Укрытие!"; color = "#c41e3a"; }
         return `<div style="font-family:'Segoe UI';min-width:140px;"><b style="font-size:1rem;">${formatted}</b><br><span style="color:${color}">${text}</span></div>`;
     }
@@ -182,11 +183,10 @@
     }
 
     // ===========================================
-    // 5. РЕГИОНЫ (расширенные синонимы)
+    // 5. СИНОНИМЫ РЕГИОНОВ (Москва удалена)
     // ===========================================
     const regionAliases = {
-        "Москва": ["москва","мск","г москва","город москва"],
-        "Московская область": ["московская область","подмосковье","мо обл","московской обл"],
+        "Московская область": ["московская область","подмосковье","мо обл","московской обл","московская обл"],
         "Санкт-Петербург": ["санкт-петербург","питер","спб","ленинград"],
         "Ленинградская область": ["ленинградская область","ленобласть","ленинградской обл"],
         "Белгородская область": ["белгород","белгородская область","белгородской обл"],
@@ -263,7 +263,7 @@
         "https://thingproxy.freeboard.io/fetch/"
     ];
     const channel = "https://t.me/s/locatorru";
-    const fallbackChannel = "https://t.me/s/radarrussiia";  // на случай проблем
+    const fallbackChannel = "https://t.me/s/radarrussiia";
 
     async function fetchWithProxy(url, proxyList) {
         for (let proxy of proxyList) {
@@ -289,7 +289,6 @@
         }
         if (!html) return {};
 
-        // Извлекаем посты: поддерживаем locatorru, radarrussiia, radaryral
         const regex = /data-post="(?:locatorru|radarrussiia|radaryral)\/(\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\/div>/gis;
         let posts = [];
         let m;
