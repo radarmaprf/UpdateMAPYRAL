@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Air Alert Map — locatorru с линейкой</title>
+    <title>Air Alert Map — locatorru</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -20,116 +20,64 @@
             border-radius: 40px;
             padding: 6px 18px;
             color: #e8eef2;
-            font-family: monospace;
+            font-family: 'JetBrains Mono', monospace;
             font-weight: bold;
             font-size: 1rem;
+            border: 1px solid rgba(255,255,255,0.25);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
             display: flex;
             align-items: center;
             gap: 6px;
             pointer-events: none;
         }
-        .online-count { font-weight: 800; color: #2ecc71; min-width: 30px; text-align: center; }
+        .online-counter::before {
+            content: "👁️";
+            font-size: 1.1rem;
+        }
+        .online-count {
+            font-weight: 800;
+            color: #2ecc71;
+            text-shadow: 0 0 4px rgba(46,204,113,0.3);
+            min-width: 30px;
+            display: inline-block;
+            text-align: center;
+        }
 
         .clock {
             position: fixed; top: 20px; right: 20px; z-index: 2000;
             background: rgba(10,14,26,0.85); backdrop-filter: blur(8px);
             border-radius: 20px; padding: 8px 18px; color: #e8eef2;
-            font-family: monospace; text-align: center;
+            font-family: 'JetBrains Mono', monospace; text-align: center;
             border: 1px solid rgba(255,255,255,0.15);
         }
         .time-main { font-size: 1.8rem; font-weight: 600; line-height: 1; }
-        .date { font-size: 0.65rem; opacity: 0.7; margin-top: 4px; }
-
+        .date { font-size: 0.65rem; opacity: 0.7; margin-top: 4px; text-transform: uppercase; }
         .legend {
             position: fixed; bottom: 20px; left: 20px; z-index: 2000;
             background: rgba(10,14,26,0.85); backdrop-filter: blur(8px);
-            border-radius: 12px; padding: 10px 16px;
+            border-radius: 12px; padding: 10px 16px; color: #e8eef2;
             font-size: 0.75rem; border: 1px solid rgba(255,255,255,0.1);
             display: flex; flex-direction: column; gap: 6px; pointer-events: none;
         }
-        .legend-item { display: flex; align-items: center; gap: 8px; color: #e8eef2; }
+        .legend-item { display: flex; align-items: center; gap: 8px; }
         .legend-color { width: 24px; height: 16px; border-radius: 4px; }
-
         .update-btn {
             position: fixed; bottom: 20px; right: 20px; z-index: 2000;
             background: rgba(0,0,0,0.8); backdrop-filter: blur(8px);
             border: 1px solid rgba(255,255,255,0.3); border-radius: 40px;
             padding: 10px 22px; color: white; font-size: 1rem;
             font-weight: bold; cursor: pointer; transition: 0.2s;
+            font-family: monospace; letter-spacing: 0.5px;
         }
-        .update-btn:hover { background: #28a745; }
-
-        /* Панель линейки — изначально свернута и поднята выше */
-        .ruler-panel {
-            position: fixed;
-            bottom: 110px;    /* подняли выше, чтобы не перекрывать кнопку обновления */
-            right: 20px;
-            z-index: 2100;
-            background: rgba(10,14,26,0.95);
-            backdrop-filter: blur(12px);
-            border-radius: 16px;
-            border: 1px solid rgba(255,255,255,0.2);
-            width: 240px;
-            transition: all 0.2s;
-            font-family: monospace;
-        }
-        .ruler-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 12px 16px;
-            cursor: pointer;
-            font-weight: bold;
-            color: #ffc107;
-            border-bottom: 1px solid rgba(255,255,255,0.2);
-        }
-        .ruler-header span:first-child { font-size: 0.9rem; }
-        .ruler-header .toggle-icon { font-size: 1.2rem; transition: transform 0.2s; }
-        .ruler-content {
-            padding: 12px 16px;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-        .ruler-panel.collapsed .ruler-content { display: none; }
-        .ruler-panel.collapsed .toggle-icon { transform: rotate(180deg); }
-        
-        .ruler-panel button {
-            background: rgba(255,255,255,0.1);
-            border: 1px solid rgba(255,255,255,0.3);
-            color: white;
-            padding: 6px 12px;
-            border-radius: 20px;
-            cursor: pointer;
-            font-weight: bold;
-        }
-        .ruler-panel button.active { background: #28a745; border-color: #28a745; }
-        .ruler-panel select {
-            background: rgba(0,0,0,0.6);
-            color: white;
-            border: 1px solid rgba(255,255,255,0.3);
-            border-radius: 20px;
-            padding: 5px 10px;
-            cursor: pointer;
-        }
-        .result {
-            background: rgba(0,0,0,0.5);
-            border-radius: 12px;
-            padding: 8px;
-            font-size: 0.75rem;
-            text-align: center;
-        }
-        .result span { color: #ffc107; font-weight: bold; }
-        .clear-ruler { background: #dc3545 !important; border-color: #dc3545 !important; margin-top: 5px; }
-
+        .update-btn:hover { background: #28a745; border-color: #28a745; transform: scale(1.02); }
         .status {
             position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
-            z-index: 2000; background: rgba(0,0,0,0.7);
+            z-index: 2000; background: rgba(0,0,0,0.7); backdrop-filter: blur(8px);
             border-radius: 20px; padding: 4px 14px; color: #ccc;
-            font-size: 0.7rem; white-space: nowrap;
+            font-size: 0.7rem; font-family: monospace; white-space: nowrap;
         }
         .custom-popup .leaflet-popup-content-wrapper {
-            background: #1a1f2e; color: #e8eef2; border-radius: 12px;
+            background: #1a1f2e; color: #e8eef2; border-radius: 12px; border-left: 4px solid;
         }
         .leaflet-control-attribution { display: none !important; }
 
@@ -139,26 +87,48 @@
             border: 1px solid rgba(255,255,255,0.2);
             width: 48px; height: 48px; border-radius: 50%;
             display: flex; align-items: center; justify-content: center;
-            cursor: pointer; font-size: 26px; color: white;
+            cursor: pointer; transition: 0.2s; color: white; font-size: 26px;
+            font-weight: bold; font-family: monospace;
         }
+        .drawer-btn:hover { background: #2c3e66; transform: scale(1.05); }
         .drawer {
             position: fixed; top: 0; left: -320px; width: 300px; height: 100%;
-            background: rgba(15,20,30,0.96); backdrop-filter: blur(12px);
-            z-index: 2200; transition: left 0.3s; border-right: 1px solid rgba(255,255,255,0.2);
-            display: flex; flex-direction: column;
+            background: rgba(15, 20, 30, 0.96); backdrop-filter: blur(12px);
+            z-index: 2200; transition: left 0.3s ease; border-right: 1px solid rgba(255,255,255,0.2);
+            display: flex; flex-direction: column; box-shadow: 4px 0 20px rgba(0,0,0,0.5);
+            font-family: 'Segoe UI', monospace;
         }
         .drawer.open { left: 0; }
-        .drawer-header { padding: 20px; border-bottom: 1px solid rgba(255,255,255,0.2); display: flex; justify-content: space-between; color: #e8eef2; font-weight: bold; }
-        .drawer-close { background: none; border: none; color: #ff8888; font-size: 28px; cursor: pointer; }
-        .drawer-content { flex: 1; overflow-y: auto; padding: 15px; }
-        .region-item { background: rgba(255,255,255,0.08); margin-bottom: 10px; border-radius: 10px; padding: 12px; border-left: 4px solid; }
+        .drawer-header {
+            padding: 20px; border-bottom: 1px solid rgba(255,255,255,0.2);
+            display: flex; justify-content: space-between; align-items: center;
+            color: #e8eef2; font-weight: bold; font-size: 1.2rem;
+        }
+        .drawer-close {
+            background: none; border: none; color: #ff8888; font-size: 28px;
+            cursor: pointer; line-height: 1; padding: 0 8px;
+        }
+        .drawer-content {
+            flex: 1; overflow-y: auto; padding: 15px;
+        }
+        .region-item {
+            background: rgba(255,255,255,0.08); margin-bottom: 10px;
+            border-radius: 10px; padding: 12px; border-left: 4px solid;
+        }
         .region-name { font-weight: bold; font-size: 1rem; margin-bottom: 5px; }
-        .empty-state { color: #aaa; text-align: center; padding: 30px 15px; }
+        .region-level { font-size: 0.75rem; opacity: 0.8; }
+        .empty-state { color: #aaa; text-align: center; padding: 30px 15px; font-style: italic; }
 
         @media (max-width: 600px) {
-            .ruler-panel { width: 220px; bottom: 100px; right: 10px; }
+            .online-counter { top: 10px; font-size: 0.75rem; padding: 4px 12px; }
+            .drawer { width: 280px; left: -290px; }
             .drawer-btn { width: 40px; height: 40px; font-size: 22px; top: 10px; left: 10px; }
             .time-main { font-size: 1.2rem; }
+            .clock { padding: 4px 12px; top: 10px; right: 10px; }
+            .legend { bottom: 10px; left: 10px; padding: 8px 12px; font-size: 0.65rem; }
+            .legend-color { width: 20px; height: 14px; }
+            .update-btn { bottom: 10px; right: 10px; padding: 8px 16px; font-size: 0.85rem; }
+            .status { bottom: 10px; font-size: 0.6rem; }
         }
     </style>
 </head>
@@ -170,47 +140,26 @@
 </div>
 
 <div class="drawer-btn" id="drawerBtn">☰</div>
+
 <div class="drawer" id="drawer">
     <div class="drawer-header">
         <span>⚠️ Регионы с тревогой</span>
         <button class="drawer-close" id="drawerClose">✕</button>
     </div>
-    <div class="drawer-content" id="drawerContent">...</div>
+    <div class="drawer-content" id="drawerContent">
+        <div class="empty-state">Загрузка данных...</div>
+    </div>
 </div>
 
 <div class="clock">
     <div class="time-main" id="liveTime">--:--</div>
     <div class="date" id="liveDate">--</div>
 </div>
-
 <div class="legend">
     <div class="legend-item"><div class="legend-color" style="background: #6c757d;"></div> <span>⚪ Отбой / Спокойно</span></div>
     <div class="legend-item"><div class="legend-color" style="background: #ffc107;"></div> <span>🟡 Опасность БПЛА</span></div>
     <div class="legend-item"><div class="legend-color" style="background: #dc3545;"></div> <span>🔴 Ракетная опасность</span></div>
 </div>
-
-<!-- Панель линейки - изначально свёрнута (collapsed) -->
-<div class="ruler-panel collapsed" id="rulerPanel">
-    <div class="ruler-header" id="rulerHeader">
-        <span>📏 Линейка</span>
-        <span class="toggle-icon">▼</span>
-    </div>
-    <div class="ruler-content">
-        <button id="rulerToggleBtn">🔘 Включить режим</button>
-        <select id="targetType">
-            <option value="120">🛸 Обычный БПЛА (120 км/ч)</option>
-            <option value="600">⚡ Реактивный БПЛА (600 км/ч)</option>
-            <option value="9000">🚀 Баллистическая ракета (9000 км/ч)</option>
-            <option value="850">🎯 Крылатая ракета (850 км/ч)</option>
-        </select>
-        <div class="result" id="rulerResult">
-            📍 Кликните на карте для точки А<br>
-            Затем для точки Б
-        </div>
-        <button id="clearRulerBtn" class="clear-ruler">🧹 Сбросить</button>
-    </div>
-</div>
-
 <button class="update-btn" id="updateBtn">🔄 Обновить</button>
 <div class="status" id="status">Загрузка...</div>
 
@@ -218,18 +167,29 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-    // ========== КАРТА ==========
+    // ===========================================
+    // КАРТА
+    // ===========================================
     const map = L.map('map').setView([61, 95], 4.2);
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
         attribution: '', subdomains: 'abcd', maxZoom: 10, minZoom: 2
     }).addTo(map);
 
-    // ========== ЦВЕТА ТРЕВОГ ==========
-    const colors = { clear: "#6c757d", droneDanger: "#ffc107", rocket: "#dc3545" };
+    // ===========================================
+    // ЦВЕТА (только отбой, БПЛА, ракетная)
+    // ===========================================
+    const colors = {
+        clear: "#6c757d",          // серый
+        droneDanger: "#ffc107",    // жёлтый
+        rocket: "#dc3545"          // красный
+    };
+
     let regionStates = {};
     let polygonsLayer = null;
 
-    // ========== ЧАСЫ ==========
+    // ===========================================
+    // ЧАСЫ
+    // ===========================================
     function updateClock() {
         const now = new Date();
         document.getElementById('liveTime').innerHTML = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
@@ -245,101 +205,124 @@
         return parts[0] + '<br>' + parts.slice(1).join(' ');
     }
 
-    // ========== ОНЛАЙН СЧЁТЧИК ==========
+    // ===========================================
+    // ОНЛАЙН СЧЁТЧИК
+    // ===========================================
     function updateOnlineCounter() {
         const viewers = Math.floor(Math.random() * 5) + 1;
-        const el = document.getElementById('onlineCount');
-        if (el) el.textContent = viewers;
+        const countElement = document.getElementById('onlineCount');
+        if (countElement) {
+            countElement.textContent = viewers;
+            countElement.style.transform = 'scale(1.1)';
+            setTimeout(() => { if (countElement) countElement.style.transform = 'scale(1)'; }, 200);
+        }
     }
     updateOnlineCounter();
     setInterval(updateOnlineCounter, 15000);
 
-    // ========== ЛОГИКА ТРЕВОГ ==========
+    // ===========================================
+    // ЛОГИКА ТРЕВОГ (без "внимание")
+    // ===========================================
     function getCurrentLevel(state) {
         if (!state) return 0;
         if (state.rocket) return 3;
         if (state.droneDanger) return 2;
         return 0;
     }
+
     function getLevelText(level) {
         if (level === 2) return "🟡 Опасность БПЛА";
         if (level === 3) return "🔴 Ракетная опасность";
         return "⚪ Отбой / Спокойно";
     }
+
     function getLevelColor(level) {
         if (level === 2) return "#ffc107";
         if (level === 3) return "#dc3545";
         return "#adb5bd";
     }
+
     function getPopupContent(regionName, level) {
-        return `<div style="font-family:'Segoe UI';min-width:140px;"><b style="font-size:1rem;">${formatName(regionName)}</b><br><span style="color:${getLevelColor(level)}">${getLevelText(level)}</span></div>`;
+        const formatted = formatName(regionName);
+        const text = getLevelText(level);
+        const color = getLevelColor(level);
+        return `<div style="font-family:'Segoe UI';min-width:140px;"><b style="font-size:1rem;">${formatted}</b><br><span style="color:${color}">${text}</span></div>`;
     }
 
-    // ========== СИНОНИМЫ РЕГИОНОВ ==========
+    // ===========================================
+    // СИНОНИМЫ РЕГИОНОВ
+    // ===========================================
     const regionAliases = {
-        "Московская область": ["московская область","подмосковье","москва","мск"],
-        "Санкт-Петербург": ["санкт-петербург","питер","спб"],
-        "Ленинградская область": ["ленинградская область","ленобласть"],
-        "Белгородская область": ["белгород","белгородская область"],
-        "Брянская область": ["брянск","брянская область"],
-        "Воронежская область": ["воронеж","воронежская область"],
-        "Курская область": ["курск","курская область"],
-        "Краснодарский край": ["краснодар","кубань"],
-        "Ростовская область": ["ростов","ростов-на-дону"],
-        "Республика Татарстан": ["татарстан","казань"],
-        "Республика Крым": ["крым"],
-        "Калининградская область": ["калининград"],
-        "Свердловская область": ["екатеринбург","свердловская область"],
-        "Челябинская область": ["челябинск"],
-        "Новосибирская область": ["новосибирск"],
-        "Самарская область": ["самара"],
-        "Нижегородская область": ["нижний новгород"],
-        "Волгоградская область": ["волгоград"],
-        "Саратовская область": ["саратов"],
-        "Пермский край": ["пермь"],
-        "Омская область": ["омск"],
-        "Томская область": ["томск"],
-        "Кемеровская область": ["кемерово","кузбасс"],
-        "Иркутская область": ["иркутск"],
-        "Красноярский край": ["красноярск"],
-        "Алтайский край": ["барнаул"],
-        "Приморский край": ["владивосток"],
-        "Хабаровский край": ["хабаровск"],
-        "Амурская область": ["благовещенск"],
-        "Архангельская область": ["архангельск"],
-        "Мурманская область": ["мурманск"],
-        "Республика Карелия": ["карелия"],
-        "Республика Коми": ["коми"],
-        "Ханты-Мансийский АО": ["хмао","сургут"],
-        "Ямало-Ненецкий АО": ["янао"],
-        "Республика Дагестан": ["дагестан"],
-        "Республика Башкортостан": ["башкортостан","уфа"],
-        "Чувашия": ["чувашия"],
-        "Удмуртия": ["удмуртия"],
-        "Кировская область": ["киров"],
-        "Тульская область": ["тула"],
-        "Калужская область": ["калуга"],
-        "Рязанская область": ["рязань"],
-        "Тверская область": ["тверь"],
-        "Ярославская область": ["ярославль"],
-        "Владимирская область": ["владимир"],
-        "Ивановская область": ["иваново"],
-        "Костромская область": ["кострома"],
-        "Орловская область": ["орел"],
-        "Липецкая область": ["липецк"],
-        "Псковская область": ["псков"],
-        "Новгородская область": ["новгород"],
-        "Тамбовская область": ["тамбов"],
-        "Пензенская область": ["пенза"],
-        "Ульяновская область": ["ульяновск"],
-        "Забайкальский край": ["забайкалье","чита"],
-        "Камчатский край": ["камчатка"],
-        "Магаданская область": ["магадан"],
-        "Сахалинская область": ["сахалин"],
-        "Чукотский АО": ["чукотка"]
+        "Московская область": ["московская область","подмосковье","мо обл","московской обл","московская обл","москва","мск"],
+        "Санкт-Петербург": ["санкт-петербург","питер","спб","ленинград"],
+        "Ленинградская область": ["ленинградская область","ленобласть","ленинградской обл"],
+        "Белгородская область": ["белгород","белгородская область","белгородской обл"],
+        "Брянская область": ["брянск","брянская область","брянской обл"],
+        "Воронежская область": ["воронеж","воронежская область","воронежской обл"],
+        "Курская область": ["курск","курская область","курской обл"],
+        "Краснодарский край": ["краснодар","кубань","краснодарский край","краснодарского края"],
+        "Ростовская область": ["ростов","ростов-на-дону","ростовская область","ростовской обл"],
+        "Республика Татарстан": ["татарстан","казань","республика татарстан"],
+        "Республика Крым": ["крым","республика крым","крыму"],
+        "Калининградская область": ["калининград","калининградская область","калининградской обл"],
+        "Свердловская область": ["свердловская область","екатеринбург","свердловской обл"],
+        "Челябинская область": ["челябинск","челябинская область","челябинской обл"],
+        "Новосибирская область": ["новосибирск","новосибирская область","новосибирской обл"],
+        "Самарская область": ["самара","самарская область","самарской обл"],
+        "Нижегородская область": ["нижний новгород","нижегородская область","нижегородской обл"],
+        "Волгоградская область": ["волгоград","волгоградская область","волгоградской обл"],
+        "Саратовская область": ["саратов","саратовская область","саратовской обл"],
+        "Пермский край": ["пермь","пермский край","пермского края"],
+        "Омская область": ["омск","омская область","омской обл"],
+        "Томская область": ["томск","томская область","томской обл"],
+        "Кемеровская область": ["кемерово","кемеровская область","кузбасс"],
+        "Иркутская область": ["иркутск","иркутская область","иркутской обл"],
+        "Красноярский край": ["красноярск","красноярский край","красноярского края"],
+        "Алтайский край": ["барнаул","алтайский край","алтайского края"],
+        "Приморский край": ["владивосток","приморский край","приморья"],
+        "Хабаровский край": ["хабаровск","хабаровский край"],
+        "Амурская область": ["амурская область","благовещенск","амурской обл"],
+        "Архангельская область": ["архангельск","архангельская область"],
+        "Мурманская область": ["мурманск","мурманская область"],
+        "Республика Карелия": ["карелия","петрозаводск"],
+        "Республика Коми": ["коми","сыктывкар"],
+        "Ханты-Мансийский АО": ["хмао","ханты-мансийск","сургут"],
+        "Ямало-Ненецкий АО": ["янао","ямал","новый уренгой"],
+        "Чеченская Республика": ["чечня","грозный","чеченская республика"],
+        "Республика Дагестан": ["дагестан","махачкала"],
+        "Республика Башкортостан": ["башкортостан","уфа","республика башкортостан"],
+        "Удмуртская Республика": ["удмуртия","ижевск"],
+        "Чувашия": ["чувашская республика","чебоксары"],
+        "Марий Эл": ["республика марий эл","йошкар-ола"],
+        "Республика Мордовия": ["мордовия","саранск"],
+        "Кировская область": ["киров","кировская область"],
+        "Ульяновская область": ["ульяновск","ульяновская область"],
+        "Пензенская область": ["пенза","пензенская область"],
+        "Тамбовская область": ["тамбов","тамбовская область"],
+        "Рязанская область": ["рязань","рязанская область"],
+        "Тульская область": ["тула","тульская область"],
+        "Калужская область": ["калуга","калужская область"],
+        "Смоленская область": ["смоленск","смоленская область"],
+        "Тверская область": ["тверь","тверская область"],
+        "Владимирская область": ["владимир","владимирская область"],
+        "Ивановская область": ["иваново","ивановская область"],
+        "Костромская область": ["кострома","костромская область"],
+        "Орловская область": ["орел","орловская область"],
+        "Липецкая область": ["липецк","липецкая область"],
+        "Псковская область": ["псков","псковская область"],
+        "Новгородская область": ["новгород","великий новгород","новгородская область"],
+        "Ярославская область": ["ярославль","ярославская область"],
+        "Забайкальский край": ["забайкалье","чита","забайкальский край"],
+        "Камчатский край": ["камчатка","петропавловск-камчатский"],
+        "Магаданская область": ["магадан","магаданская область"],
+        "Сахалинская область": ["сахалин","южно-сахалинск"],
+        "Еврейская АО": ["еврейская автономная","биробиджан"],
+        "Чукотский АО": ["чукотка","анадырь"]
     };
 
-    // ========== ПАРСИНГ TELEGRAM ==========
+    // ===========================================
+    // ПАРСИНГ TELEGRAM (без учёта "внимание")
+    // ===========================================
     const proxies = [
         "https://api.allorigins.win/raw?url=",
         "https://cors-anywhere.herokuapp.com/",
@@ -358,7 +341,7 @@
                     const text = await response.text();
                     if (text && text.length > 2000) return text;
                 }
-            } catch(e) { console.warn(`Прокси ${proxy} не сработал`, e); }
+            } catch (e) { console.warn(`Прокси ${proxy} не сработал`, e); }
         }
         throw new Error("Все прокси недоступны");
     }
@@ -368,8 +351,12 @@
             /отбой опасности бпла по всем ранее регионам/i,
             /отбой по всем регионам/i,
             /все тревоги сняты/i,
+            /снятие всех тревог/i,
+            /отбой по всем/i,
             /глобальный отбой/i,
-            /полная отмена тревог/i
+            /полная отмена тревог/i,
+            /все угрозы сняты/i,
+            /отбой для всех регионов/i
         ];
         return patterns.some(p => p.test(text));
     }
@@ -395,11 +382,14 @@
         }
         posts.sort((a,b) => a.id - b.id);
         const fresh = posts.slice(-60);
+        console.log(`Постов получено: ${posts.length}, анализируем ${fresh.length}`);
+
         const updates = {};
 
         for (const post of fresh) {
             let text = post.text.replace(/\s+/g, ' ').trim();
             if (isGlobalClear(text)) {
+                console.log("Глобальный отбой! Сброс всех тревог.");
                 const allRegions = Object.keys(regionAliases);
                 for (let reg of allRegions) {
                     if (!updates[reg]) updates[reg] = {};
@@ -417,16 +407,19 @@
             }
             if (matched.length === 0) continue;
 
-            const isRocket = /ракетная опасность|ракетная тревога|баллистическая/i.test(text);
-            const isDroneDanger = /\bбпла?\b|беспилот|дрон/i.test(text);
-            const isOtboyRocket = /отбой ракетной|ракетная опасность отбой/i.test(text);
-            const isOtboyDrone = /отбой опасности бпла|отбой бпла/i.test(text);
+            const isRocket = /ракетная опасность|ракетная тревога|баллистическая ракета|крылатая ракета|авиационная ракетная опасность/i.test(text);
+            const isDroneDanger = /\bбпла?\b|беспилот|дрон|опасность по бпла|атака бпла/i.test(text);
+            
+            const isOtboyRocket = /отбой ракетной опасности|снята ракетная|ракетная опасность отбой/i.test(text);
+            const isOtboyDrone = /отбой опасности бпла|отбой бпла|бпла отбой|отбой по бпла/i.test(text);
             const isGeneralOtboy = /отбой/i.test(text) && !isOtboyRocket && !isOtboyDrone;
 
             for (const region of matched) {
                 if (!updates[region]) updates[region] = {};
+
                 if (isRocket) updates[region].rocket = true;
                 if (isDroneDanger) updates[region].droneDanger = true;
+
                 if (isOtboyRocket) updates[region].rocket = false;
                 if (isOtboyDrone) updates[region].droneDanger = false;
                 if (isGeneralOtboy) {
@@ -442,17 +435,22 @@
             if (upd.droneDanger !== undefined) newStates[region].droneDanger = upd.droneDanger;
             if (upd.rocket !== undefined) newStates[region].rocket = upd.rocket;
         }
+        console.log("Обновлённые состояния:", newStates);
         return newStates;
     }
 
-    // ========== ОБНОВЛЕНИЕ КАРТЫ ==========
+    // ===========================================
+    // ОБНОВЛЕНИЕ ПОЛИГОНОВ И ПАНЕЛИ
+    // ===========================================
     function updateAlertList() {
         const container = document.getElementById('drawerContent');
         if (!container) return;
         const activeRegions = [];
         for (const [region, state] of Object.entries(regionStates)) {
             const level = getCurrentLevel(state);
-            if (level > 0) activeRegions.push({ name: region, level, levelText: getLevelText(level) });
+            if (level > 0) {
+                activeRegions.push({ name: region, level, levelText: getLevelText(level) });
+            }
         }
         activeRegions.sort((a,b) => b.level - a.level);
         if (activeRegions.length === 0) {
@@ -461,10 +459,13 @@
         }
         let html = '';
         activeRegions.forEach(r => {
-            html += `<div class="region-item" style="border-left-color: ${getLevelColor(r.level)};">
-                        <div class="region-name">${formatName(r.name)}</div>
-                        <div class="region-level">${r.levelText}</div>
-                     </div>`;
+            let borderColor = getLevelColor(r.level);
+            html += `
+                <div class="region-item" style="border-left-color: ${borderColor};">
+                    <div class="region-name">${formatName(r.name)}</div>
+                    <div class="region-level">${r.levelText}</div>
+                </div>
+            `;
         });
         container.innerHTML = html;
     }
@@ -493,7 +494,9 @@
             let changed = false;
             for (const [reg, newState] of Object.entries(newStates)) {
                 const oldState = regionStates[reg];
-                if (!oldState || oldState.droneDanger !== newState.droneDanger || oldState.rocket !== newState.rocket) {
+                if (!oldState ||
+                    oldState.droneDanger !== newState.droneDanger ||
+                    oldState.rocket !== newState.rocket) {
                     regionStates[reg] = { ...newState };
                     changed = true;
                 }
@@ -511,10 +514,13 @@
         } catch(err) {
             console.error(err);
             statusDiv.innerHTML = '⚠️ Ошибка';
+            setTimeout(() => { if (statusDiv.innerHTML === '⚠️ Ошибка') statusDiv.innerHTML = 'Повторите'; }, 2000);
         }
     }
 
-    // ========== ЗАГРУЗКА ГРАНИЦ ==========
+    // ===========================================
+    // ЗАГРУЗКА ПОЛИГОНОВ (ГРАНИЦЫ)
+    // ===========================================
     function loadPolygons() {
         const url = "https://raw.githubusercontent.com/azatkh/ru-regions-geojson/main/regions.geojson";
         const fallback = "https://raw.githubusercontent.com/codeforgermany/click_that_hood/main/public/data/russia.geojson";
@@ -551,183 +557,9 @@
         updateAlertList();
     }
 
-    // ========== ЛИНЕЙКА ==========
-    let rulerMode = false;
-    let rulerPoints = [];
-    let rulerMarkers = [];
-    let rulerLine = null;
-    let savedPopupHandlers = new Map();
-
-    // Максимальные дальности для разных типов целей (в километрах)
-    const maxRange = {
-        "120": 2500,    // Обычный БПЛА (Shahed и аналоги)
-        "600": 1000,    // Реактивный БПЛА
-        "9000": 18000,  // Баллистическая ракета
-        "850": 6500     // Крылатая ракета
-    };
-
-    // Названия типов целей для отображения в предупреждениях
-    const targetNames = {
-        "120": "БПЛА",
-        "600": "реактивного БПЛА",
-        "9000": "баллистической ракеты",
-        "850": "крылатой ракеты"
-    };
-
-    function clearRulerVisuals() {
-        if (rulerLine) map.removeLayer(rulerLine);
-        rulerMarkers.forEach(m => map.removeLayer(m));
-        rulerMarkers = [];
-        rulerLine = null;
-        rulerPoints = [];
-    }
-
-    function updateRulerResult() {
-        const resultDiv = document.getElementById('rulerResult');
-        if (rulerPoints.length < 2) {
-            resultDiv.innerHTML = rulerPoints.length === 0 ? 
-                '📍 Кликните на карте для точки А<br>Затем для точки Б' : 
-                '📍 Точка А выбрана. Кликните для точки Б';
-            return;
-        }
-        const p1 = rulerPoints[0];
-        const p2 = rulerPoints[1];
-        const distance = p1.distanceTo(p2) / 1000;
-        const speed = parseFloat(document.getElementById('targetType').value);
-        
-        // Вычисляем время в пути
-        const hoursTotal = distance / speed;
-        const fullHours = Math.floor(hoursTotal);
-        const remainingMinutes = Math.floor((hoursTotal - fullHours) * 60);
-        const remainingSeconds = Math.round(((hoursTotal - fullHours) * 60 - remainingMinutes) * 60);
-        
-        // Формируем строку времени
-        let timeString = '';
-        if (fullHours > 0) {
-            timeString += `${fullHours} ч `;
-        }
-        if (remainingMinutes > 0 || fullHours === 0) {
-            timeString += `${remainingMinutes} мин `;
-        }
-        if (remainingSeconds > 0 && fullHours === 0) {
-            timeString += `${remainingSeconds} с`;
-        }
-        
-        // Проверяем, не превышает ли дальность максимальную для выбранного типа цели
-        const targetSpeed = document.getElementById('targetType').value;
-        const maxDist = maxRange[targetSpeed];
-        
-        if (distance > maxDist) {
-            const targetName = targetNames[targetSpeed] || "цели";
-            resultDiv.innerHTML = `📏 Расстояние: <span>${distance.toFixed(2)} км</span><br>⏱️ Время: <span>${timeString}</span><br>⚠️ <span style="color:#ff8888;">Превышена дальность ${targetName} (макс. ${maxDist} км)</span>`;
-        } else {
-            resultDiv.innerHTML = `📏 Расстояние: <span>${distance.toFixed(2)} км</span><br>⏱️ Время: <span>${timeString}</span>`;
-        }
-    }
-
-    function addRulerPoint(latlng) {
-        if (!rulerMode) return;
-        if (rulerPoints.length >= 2) {
-            clearRulerVisuals();
-        }
-        const marker = L.circleMarker(latlng, {
-            radius: 8,
-            color: rulerPoints.length === 0 ? '#2ecc71' : '#e74c3c',
-            fillColor: rulerPoints.length === 0 ? '#2ecc71' : '#e74c3c',
-            fillOpacity: 0.8,
-            weight: 2
-        }).addTo(map);
-        marker.bindPopup(rulerPoints.length === 0 ? 'Точка А' : 'Точка Б').openPopup();
-        rulerMarkers.push(marker);
-        rulerPoints.push(latlng);
-        
-        if (rulerPoints.length === 2) {
-            const linePoints = [rulerPoints[0], rulerPoints[1]];
-            rulerLine = L.polyline(linePoints, { color: '#3498db', weight: 4, opacity: 0.8, dashArray: '5, 10' }).addTo(map);
-            updateRulerResult();
-        } else {
-            updateRulerResult();
-        }
-    }
-
-    function onMapClick(e) {
-        if (!rulerMode) return;
-        addRulerPoint(e.latlng);
-    }
-
-    function enableRuler() {
-        if (rulerMode) return;
-        rulerMode = true;
-        clearRulerVisuals();
-        
-        if (polygonsLayer) {
-            polygonsLayer.eachLayer(layer => {
-                if (layer.getPopup() && !savedPopupHandlers.has(layer)) {
-                    savedPopupHandlers.set(layer, layer.getPopup());
-                }
-                layer.unbindPopup();
-                layer.setStyle({ interactive: false, cursor: 'default' });
-                layer.off('click');
-                layer.off('mouseover');
-                layer.off('mouseout');
-            });
-        }
-        
-        map.on('click', onMapClick);
-        document.getElementById('rulerToggleBtn').classList.add('active');
-        map.getContainer().style.cursor = 'crosshair';
-        document.getElementById('rulerResult').innerHTML = '📍 Кликните на карте для точки А<br>Затем для точки Б';
-    }
-
-    function disableRuler() {
-        if (!rulerMode) return;
-        rulerMode = false;
-        map.off('click', onMapClick);
-        clearRulerVisuals();
-        
-        if (polygonsLayer) {
-            polygonsLayer.eachLayer(layer => {
-                if (savedPopupHandlers.has(layer)) {
-                    const originalPopup = savedPopupHandlers.get(layer);
-                    layer.bindPopup(originalPopup.getContent(), originalPopup.options);
-                }
-                layer.setStyle({ interactive: true, cursor: 'pointer' });
-            });
-        }
-        
-        document.getElementById('rulerToggleBtn').classList.remove('active');
-        map.getContainer().style.cursor = '';
-        document.getElementById('rulerResult').innerHTML = '📍 Кликните на карте для точки А<br>Затем для точки Б';
-    }
-
-    function resetRuler() {
-        clearRulerVisuals();
-        updateRulerResult();
-    }
-
-    // ========== СВОРАЧИВАНИЕ ПАНЕЛИ ==========
-    const rulerPanel = document.getElementById('rulerPanel');
-    const rulerHeader = document.getElementById('rulerHeader');
-    rulerHeader.addEventListener('click', () => {
-        rulerPanel.classList.toggle('collapsed');
-    });
-
-    // ========== КНОПКИ ЛИНЕЙКИ ==========
-    document.getElementById('rulerToggleBtn').addEventListener('click', () => {
-        if (rulerMode) {
-            disableRuler();
-        } else {
-            enableRuler();
-        }
-    });
-    document.getElementById('clearRulerBtn').addEventListener('click', () => {
-        resetRuler();
-    });
-    document.getElementById('targetType').addEventListener('change', () => {
-        if (rulerPoints.length === 2) updateRulerResult();
-    });
-
-    // ========== БОКОВОЕ МЕНЮ ==========
+    // ===========================================
+    // УПРАВЛЕНИЕ ПАНЕЛЬЮ
+    // ===========================================
     function initDrawer() {
         const drawer = document.getElementById('drawer');
         const btnOpen = document.getElementById('drawerBtn');
@@ -741,10 +573,14 @@
         });
     }
 
-    // ========== СТАРТ ==========
+    // ===========================================
+    // СТАРТ
+    // ===========================================
     const saved = localStorage.getItem("regionStates");
     if (saved) {
-        try { regionStates = JSON.parse(saved); } catch(e) {}
+        try {
+            regionStates = JSON.parse(saved);
+        } catch(e) {}
     }
     refreshAlerts();
     setInterval(refreshAlerts, 30000);
