@@ -176,7 +176,7 @@
     }).addTo(map);
 
     // ===========================================
-    // ЦВЕТА (только отбой, БПЛА, ракетная)
+    // ЦВЕТА (отбой, БПЛА, ракетная)
     // ===========================================
     const colors = {
         clear: "#6c757d",          // серый
@@ -206,7 +206,7 @@
     }
 
     // ===========================================
-    // ОНЛАЙН СЧЁТЧИК
+    // ОНЛАЙН СЧЁТЧИК (имитация, можно убрать или оставить)
     // ===========================================
     function updateOnlineCounter() {
         const viewers = Math.floor(Math.random() * 5) + 1;
@@ -221,7 +221,7 @@
     setInterval(updateOnlineCounter, 15000);
 
     // ===========================================
-    // ЛОГИКА ТРЕВОГ (без "внимание")
+    // ЛОГИКА ТРЕВОГ
     // ===========================================
     function getCurrentLevel(state) {
         if (!state) return 0;
@@ -574,6 +574,22 @@
     }
 
     // ===========================================
+    // ФОНОВОЕ ОБНОВЛЕНИЕ (улучшенное)
+    // ===========================================
+    function setupBackgroundUpdates() {
+        // Мгновенное обновление при возврате вкладки
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                refreshAlerts();
+                map.invalidateSize();
+            }
+        });
+        // Более частый интервал (20 секунд вместо 30, чтобы компенсировать замедление в фоне)
+        if (window._alertInterval) clearInterval(window._alertInterval);
+        window._alertInterval = setInterval(refreshAlerts, 20000);
+    }
+
+    // ===========================================
     // СТАРТ
     // ===========================================
     const saved = localStorage.getItem("regionStates");
@@ -583,7 +599,7 @@
         } catch(e) {}
     }
     refreshAlerts();
-    setInterval(refreshAlerts, 30000);
+    setupBackgroundUpdates();      // включает улучшенное фоновое обновление
     loadPolygons();
     document.getElementById('updateBtn').addEventListener('click', () => refreshAlerts());
     window.addEventListener('resize', () => map.invalidateSize());
