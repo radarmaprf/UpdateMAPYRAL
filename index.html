@@ -267,7 +267,6 @@
         updateRulerDisplay();
     }
     
-    // === ИСПРАВЛЕННАЯ ФУНКЦИЯ ВКЛЮЧЕНИЯ ЛИНЕЙКИ ===
     function setRulerMode(active) {
         rulerModeActive = active;
         const rulerBtn = document.getElementById('rulerBtn');
@@ -277,23 +276,15 @@
             rulerBtn.classList.add('active');
             panel.classList.add('show');
             map.getContainer().style.cursor = 'crosshair';
-            
-            // Отключаем все обработчики кликов на полигонах (чтобы не мешали)
             if (polygonsLayer) {
-                polygonsLayer.eachLayer(layer => {
-                    layer.off('click');
-                });
+                polygonsLayer.eachLayer(layer => layer.off('click'));
             }
-            // Глобальный обработчик карты – будет срабатывать даже при клике на полигон,
-            // потому что у полигонов больше нет своего обработчика, который бы перехватывал событие.
             map.on('click', addRulerPoint);
         } else {
             rulerBtn.classList.remove('active');
             panel.classList.remove('show');
             map.getContainer().style.cursor = '';
             map.off('click', addRulerPoint);
-            
-            // Восстанавливаем стандартное поведение полигонов (открытие попапа по клику)
             if (polygonsLayer) {
                 polygonsLayer.eachLayer(layer => {
                     layer.off('click');
@@ -381,7 +372,7 @@
     }
     
     // ===========================================
-    // 6. ПАРСИНГ TELEGRAM
+    // 6. ПАРСИНГ TELEGRAM (исправлен: убрана автоматическая тревога для всех регионов)
     // ===========================================
     const regionAliases = {
         "Москва": ["москва","мск","город москва","московская область","подмосковье","мо обл","московской обл","московская обл"],
@@ -450,7 +441,6 @@
         "Еврейская АО": ["еврейская автономная","биробиджан"],
         "Чукотский АО": ["чукотка","анадырь"]
     };
-    const allRegionNames = Object.keys(regionAliases);
     
     async function fetchWithProxy(url) {
         const proxies = ["https://api.allorigins.win/raw?url=", "https://corsproxy.io/?", "https://cors-anywhere.herokuapp.com/"];
@@ -488,14 +478,15 @@
             const newStatus = JSON.parse(JSON.stringify(regionStatus));
             for (let post of fresh) {
                 const text = post.text;
-                const isAll = /все регионы|по всей россии/i.test(text);
-                let matched = isAll ? allRegionNames : [];
-                if (!isAll) {
-                    for (const [official, keys] of Object.entries(regionAliases)) {
-                        if (keys.some(kw => text.includes(kw))) matched.push(official);
-                    }
+                // Игнорируем общие фразы "все регионы" — они не должны подсвечивать всё подряд
+                if (/все регионы|по всей россии/i.test(text)) continue;
+                
+                let matched = [];
+                for (const [official, keys] of Object.entries(regionAliases)) {
+                    if (keys.some(kw => text.includes(kw))) matched.push(official);
                 }
                 if (matched.length === 0) continue;
+                
                 const isOtboy = /отбой|снята/i.test(text);
                 const isRocket = /ракетная опасность|ракетная тревога/i.test(text);
                 const isDrone = /бпла|беспилот/i.test(text);
@@ -523,7 +514,7 @@
     }
     
     // ===========================================
-    // 7. ЗАГРУЗКА ГРАНИЦ РЕГИОНОВ (с учётом режима линейки)
+    // 7. ЗАГРУЗКА ГРАНИЦ РЕГИОНОВ
     // ===========================================
     function loadPolygons() {
         const url = "https://raw.githubusercontent.com/azatkh/ru-regions-geojson/main/regions.geojson";
@@ -557,14 +548,9 @@
             }
         }).addTo(map);
         
-        // Настройка обработчиков кликов в зависимости от текущего режима линейки
         if (rulerModeActive) {
-            // Если линейка активна – убираем все обработчики, чтобы клики доходили до карты
-            polygonsLayer.eachLayer(layer => {
-                layer.off('click');
-            });
+            polygonsLayer.eachLayer(layer => layer.off('click'));
         } else {
-            // Если линейка не активна – вешаем открытие попапа
             polygonsLayer.eachLayer(layer => {
                 layer.off('click');
                 layer.on('click', (e) => { e.target.openPopup(); });
@@ -592,7 +578,6 @@
     document.getElementById('clearRulerBtn').addEventListener('click', () => clearRuler());
     document.getElementById('threatType').addEventListener('change', () => updateRulerDisplay());
     
-    // Панель списка тревог
     const panel = document.getElementById('alertsPanel');
     document.getElementById('openPanelBtn').addEventListener('click', () => panel.classList.add('open'));
     document.getElementById('closePanelBtn').addEventListener('click', () => panel.classList.remove('open'));
