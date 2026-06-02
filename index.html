@@ -550,12 +550,13 @@
         updateAlertList();
     }
 
-    // ========== ЛИНЕЙКА (ИСПРАВЛЕНА) ==========
+    // ========== ЛИНЕЙКА (ИСПРАВЛЕНА — отключает интерактивность полигонов) ==========
     let rulerMode = false;          // включён ли режим измерения
     let rulerPoints = [];
     let rulerMarkers = [];
     let rulerLine = null;
     let rulerClickHandler = null;   // ссылка на обработчик, чтобы удалять
+    let savedPopupHandlers = new Map(); // сохраним оригинальные попапы
 
     function clearRulerVisuals() {
         if (rulerLine) map.removeLayer(rulerLine);
@@ -587,7 +588,6 @@
     function addRulerPoint(latlng) {
         if (!rulerMode) return;
         if (rulerPoints.length >= 2) {
-            // Если уже есть две точки — сбрасываем и начинаем заново
             clearRulerVisuals();
         }
         const marker = L.circleMarker(latlng, {
@@ -618,8 +618,24 @@
     function enableRuler() {
         if (rulerMode) return;
         rulerMode = true;
-        clearRulerVisuals(); // очищаем старые точки при включении
-        // Добавляем обработчик клика
+        clearRulerVisuals();
+        
+        // Отключаем интерактивность и попапы у всех полигонов
+        if (polygonsLayer) {
+            polygonsLayer.eachLayer(layer => {
+                // Сохраняем оригинальный попап, если ещё не сохранили
+                if (layer.getPopup() && !savedPopupHandlers.has(layer)) {
+                    savedPopupHandlers.set(layer, layer.getPopup());
+                }
+                layer.unbindPopup();
+                layer.setStyle({ interactive: false, cursor: 'default' });
+                layer.off('click');
+                layer.off('mouseover');
+                layer.off('mouseout');
+            });
+        }
+        
+        // Устанавливаем курсор-прицел и обработчик клика
         map.on('click', onMapClick);
         document.getElementById('rulerToggleBtn').classList.add('active');
         map.getContainer().style.cursor = 'crosshair';
@@ -631,6 +647,18 @@
         rulerMode = false;
         map.off('click', onMapClick);
         clearRulerVisuals();
+        
+        // Восстанавливаем попапы и интерактивность полигонов
+        if (polygonsLayer) {
+            polygonsLayer.eachLayer(layer => {
+                if (savedPopupHandlers.has(layer)) {
+                    const originalPopup = savedPopupHandlers.get(layer);
+                    layer.bindPopup(originalPopup.getContent(), originalPopup.options);
+                }
+                layer.setStyle({ interactive: true, cursor: 'pointer' });
+            });
+        }
+        
         document.getElementById('rulerToggleBtn').classList.remove('active');
         map.getContainer().style.cursor = '';
         document.getElementById('rulerResult').innerHTML = '📍 Кликните на карте для точки А<br>Затем для точки Б';
@@ -641,7 +669,6 @@
             clearRulerVisuals();
             updateRulerResult();
         } else {
-            // если режим выключен — просто очищаем
             clearRulerVisuals();
             updateRulerResult();
         }
