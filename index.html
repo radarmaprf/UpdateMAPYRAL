@@ -59,10 +59,10 @@
         }
         .update-btn:hover { background: #28a745; }
 
-        /* Панель линейки — сворачиваемая */
+        /* Панель линейки — изначально свернута и поднята выше */
         .ruler-panel {
             position: fixed;
-            bottom: 90px;
+            bottom: 110px;    /* подняли выше, чтобы не перекрывать кнопку обновления */
             right: 20px;
             z-index: 2100;
             background: rgba(10,14,26,0.95);
@@ -156,7 +156,7 @@
         .empty-state { color: #aaa; text-align: center; padding: 30px 15px; }
 
         @media (max-width: 600px) {
-            .ruler-panel { width: 220px; bottom: 80px; right: 10px; }
+            .ruler-panel { width: 220px; bottom: 100px; right: 10px; }
             .drawer-btn { width: 40px; height: 40px; font-size: 22px; top: 10px; left: 10px; }
             .time-main { font-size: 1.2rem; }
         }
@@ -189,8 +189,8 @@
     <div class="legend-item"><div class="legend-color" style="background: #dc3545;"></div> <span>🔴 Ракетная опасность</span></div>
 </div>
 
-<!-- Сворачиваемая панель линейки -->
-<div class="ruler-panel" id="rulerPanel">
+<!-- Панель линейки - изначально свёрнута (collapsed) -->
+<div class="ruler-panel collapsed" id="rulerPanel">
     <div class="ruler-header" id="rulerHeader">
         <span>📏 Линейка</span>
         <span class="toggle-icon">▼</span>
@@ -550,13 +550,12 @@
         updateAlertList();
     }
 
-    // ========== ЛИНЕЙКА (ИСПРАВЛЕНА — отключает интерактивность полигонов) ==========
-    let rulerMode = false;          // включён ли режим измерения
+    // ========== ЛИНЕЙКА ==========
+    let rulerMode = false;
     let rulerPoints = [];
     let rulerMarkers = [];
     let rulerLine = null;
-    let rulerClickHandler = null;   // ссылка на обработчик, чтобы удалять
-    let savedPopupHandlers = new Map(); // сохраним оригинальные попапы
+    let savedPopupHandlers = new Map();
 
     function clearRulerVisuals() {
         if (rulerLine) map.removeLayer(rulerLine);
@@ -620,10 +619,8 @@
         rulerMode = true;
         clearRulerVisuals();
         
-        // Отключаем интерактивность и попапы у всех полигонов
         if (polygonsLayer) {
             polygonsLayer.eachLayer(layer => {
-                // Сохраняем оригинальный попап, если ещё не сохранили
                 if (layer.getPopup() && !savedPopupHandlers.has(layer)) {
                     savedPopupHandlers.set(layer, layer.getPopup());
                 }
@@ -635,7 +632,6 @@
             });
         }
         
-        // Устанавливаем курсор-прицел и обработчик клика
         map.on('click', onMapClick);
         document.getElementById('rulerToggleBtn').classList.add('active');
         map.getContainer().style.cursor = 'crosshair';
@@ -648,7 +644,6 @@
         map.off('click', onMapClick);
         clearRulerVisuals();
         
-        // Восстанавливаем попапы и интерактивность полигонов
         if (polygonsLayer) {
             polygonsLayer.eachLayer(layer => {
                 if (savedPopupHandlers.has(layer)) {
@@ -665,13 +660,8 @@
     }
 
     function resetRuler() {
-        if (rulerMode) {
-            clearRulerVisuals();
-            updateRulerResult();
-        } else {
-            clearRulerVisuals();
-            updateRulerResult();
-        }
+        clearRulerVisuals();
+        updateRulerResult();
     }
 
     // ========== СВОРАЧИВАНИЕ ПАНЕЛИ ==========
