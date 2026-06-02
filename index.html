@@ -3,13 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Air Alert Map — линейка угроз</title>
+    <title>Air Alert Map — все регионы РФ</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { background: #0a0e1a; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
         
-        /* Часы */
         .clock {
             position: fixed; top: 20px; right: 20px; z-index: 2000;
             background: rgba(10,14,26,0.85); backdrop-filter: blur(8px);
@@ -20,7 +19,6 @@
         .time-main { font-size: 1.8rem; font-weight: 600; line-height: 1; }
         .date { font-size: 0.65rem; opacity: 0.7; margin-top: 4px; text-transform: uppercase; }
         
-        /* Легенда */
         .legend {
             position: fixed; bottom: 20px; left: 20px; z-index: 2000;
             background: rgba(10,14,26,0.85); backdrop-filter: blur(8px);
@@ -31,7 +29,6 @@
         .legend-item { display: flex; align-items: center; gap: 8px; }
         .legend-color { width: 24px; height: 16px; border-radius: 4px; }
         
-        /* Кнопки управления */
         .toolbar {
             position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
             z-index: 2000; display: flex; gap: 12px; background: rgba(0,0,0,0.7);
@@ -66,7 +63,6 @@
             font-size: 0.7rem; font-family: monospace; white-space: nowrap;
         }
         
-        /* Панель линейки */
         .ruler-panel {
             position: fixed; top: 80px; left: 20px; z-index: 2100;
             background: rgba(10,14,26,0.95); backdrop-filter: blur(12px);
@@ -92,7 +88,6 @@
             font-weight: bold; cursor: pointer;
         }
         
-        /* Панель списка тревог */
         .alerts-panel {
             position: fixed; top: 0; left: -320px; width: 300px; height: 100%;
             background: rgba(10, 14, 26, 0.95); backdrop-filter: blur(12px);
@@ -107,11 +102,11 @@
         .close-panel { background: none; border: none; color: white; font-size: 1.8rem; cursor: pointer; }
         .panel-content { flex: 1; overflow-y: auto; padding: 12px; }
         .alert-region-item { background: rgba(30,35,50,0.7); margin-bottom: 10px; padding: 12px; border-radius: 12px; border-left: 4px solid; }
+        .empty-message { text-align: center; color: #aaa; padding: 20px; }
         
         .custom-popup .leaflet-popup-content-wrapper { background: #1a1f2e; color: #e8eef2; border-radius: 12px; }
         .leaflet-control-attribution { display: none !important; }
         
-        /* Ключевой класс для отключения кликов по полигонам */
         .leaflet-interactive-off {
             pointer-events: none !important;
         }
@@ -138,13 +133,12 @@
 
 <div class="legend">
     <div class="legend-item"><div class="legend-color" style="background: #6c757d;"></div> <span>⚪ Отбой</span></div>
-    <div class="legend-item"><div class="legend-color" style="background: #ffc107;"></div> <span>🟡 БПЛА</span></div>
+    <div class="legend-item"><div class="legend-color" style="background: #ffc107;"></div> <span>🟡 Опасность БПЛА</span></div>
     <div class="legend-item"><div class="legend-color" style="background: #dc3545;"></div> <span>🔴 Ракетная опасность</span></div>
 </div>
 <button class="update-btn" id="updateBtn">🔄 Обновить</button>
 <div class="status" id="status">Загрузка...</div>
 
-<!-- Панель линейки -->
 <div id="rulerPanel" class="ruler-panel">
     <h4>📏 Измерение угрозы</h4>
     <select id="threatType" class="threat-select">
@@ -153,7 +147,7 @@
         <option value="cruise">✈️ Крылатая ракета (850 км/ч)</option>
         <option value="ballistic">💥 Баллистическая ракета (9000 км/ч)</option>
     </select>
-    <div class="distance-info" id="distanceInfo">
+    <div class="distance-info">
         <p>📏 Расстояние: <span id="distKm">0</span> км</p>
         <p>⏱ Время подлёта:</p>
         <div id="timeResult" class="time-result">—</div>
@@ -161,7 +155,6 @@
     <small style="font-size:0.65rem; opacity:0.7;">★ Кликните по карте 2 раза — поставьте точки A и B</small>
 </div>
 
-<!-- Панель списка тревог -->
 <div id="alertsPanel" class="alerts-panel">
     <div class="panel-header">
         <h3>🚨 Регионы с тревогой</h3>
@@ -175,7 +168,12 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
     // ===========================================
-    // 1. ИНИЦИАЛИЗАЦИЯ КАРТЫ И ОБЩИХ ДАННЫХ
+    // ОЧИСТКА КЭША ПРИ КАЖДОМ ЗАХОДЕ
+    // ===========================================
+    localStorage.removeItem("alertCache");
+    
+    // ===========================================
+    // ИНИЦИАЛИЗАЦИЯ КАРТЫ
     // ===========================================
     const map = L.map('map').setView([61, 95], 4.2);
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
@@ -185,9 +183,9 @@
     let regionStatus = {};
     const colors = { clear: "#6c757d", drone: "#ffc107", rocket: "#dc3545" };
     let polygonsLayer = null;
-
+    
     // ===========================================
-    // 2. ИНСТРУМЕНТ ЛИНЕЙКИ
+    // ЛИНЕЙКА
     // ===========================================
     let rulerModeActive = false;
     let points = [];
@@ -255,7 +253,6 @@
         updateRulerDisplay();
     }
     
-    // ГЛАВНАЯ ФУНКЦИЯ: переключение режима линейки с отключением кликов по полигонам
     function setRulerMode(active) {
         rulerModeActive = active;
         const rulerBtn = document.getElementById('rulerBtn');
@@ -265,7 +262,6 @@
             rulerBtn.classList.add('active');
             panel.classList.add('show');
             map.getContainer().style.cursor = 'crosshair';
-            // Отключаем pointer-events у всех полигонов
             if (polygonsLayer) {
                 polygonsLayer.eachLayer(layer => {
                     if (layer._path) layer._path.classList.add('leaflet-interactive-off');
@@ -277,7 +273,6 @@
             panel.classList.remove('show');
             map.getContainer().style.cursor = '';
             map.off('click', addRulerPoint);
-            // Восстанавливаем клики по полигонам
             if (polygonsLayer) {
                 polygonsLayer.eachLayer(layer => {
                     if (layer._path) layer._path.classList.remove('leaflet-interactive-off');
@@ -288,7 +283,7 @@
     }
     
     // ===========================================
-    // 3. ЧАСЫ И ФОРМАТИРОВАНИЕ
+    // ЧАСЫ
     // ===========================================
     function updateClock() {
         const now = new Date();
@@ -315,7 +310,7 @@
     }
     
     // ===========================================
-    // 4. ОБНОВЛЕНИЕ ЦВЕТОВ ПОЛИГОНОВ
+    // ОБНОВЛЕНИЕ ЦВЕТОВ
     // ===========================================
     function updateAllPolygons() {
         if (!polygonsLayer) return;
@@ -334,7 +329,7 @@
     }
     
     // ===========================================
-    // 5. ПАНЕЛЬ СПИСКА ТРЕВОГ
+    // ПАНЕЛЬ ТРЕВОГ
     // ===========================================
     function updateAlertsPanel() {
         const panelContent = document.getElementById('panelContent');
@@ -363,9 +358,8 @@
     }
     
     // ===========================================
-    // 6. ПАРСИНГ TELEGRAM (все регионы)
+    // ВСЕ РЕГИОНЫ РФ (более 85)
     // ===========================================
-    // Полный список регионов РФ (более 80)
     const regionAliases = {
         "Москва": ["москва","мск","город москва"],
         "Московская область": ["московская область","подмосковье","мо обл","московской обл"],
@@ -396,10 +390,10 @@
         "Ростовская область": ["ростов","ростов-на-дону","ростовская область"],
         "Волгоградская область": ["волгоград","волгоградская область"],
         "Астраханская область": ["астрахань","астраханская область"],
-        "Татарстан": ["татарстан","казань","Республика Татарстан"],
+        "Республика Татарстан": ["татарстан","казань","Республика Татарстан"],
         "Республика Башкортостан": ["башкортостан","уфа","республика башкортостан"],
         "Республика Марий Эл": ["марий эл","йошкар-ола"],
-        "Чувашия": ["чувашия","чебоксары","Чувашская Республика"],
+        "Чувашская Республика": ["чувашия","чебоксары","Чувашская Республика"],
         "Республика Мордовия": ["мордовия","саранск"],
         "Удмуртская Республика": ["удмуртия","ижевск"],
         "Самарская область": ["самара","самарская область"],
@@ -425,6 +419,9 @@
         "Магаданская область": ["магадан","магаданская область"],
         "Камчатский край": ["камчатка","петропавловск-камчатский"],
         "Мурманская область": ["мурманск","мурманская область"],
+        "Архангельская область": ["архангельск","архангельская область"],
+        "Вологодская область": ["вологда","вологодская область"],
+        "Калининградская область": ["калининград","калининградская область"],
         "Республика Крым": ["крым","республика крым","симферополь"],
         "Республика Дагестан": ["дагестан","махачкала"],
         "Республика Карелия": ["карелия","петрозаводск"],
@@ -433,7 +430,6 @@
         "Ханты-Мансийский АО": ["хмао","ханты-мансийск","сургут"],
         "Ямало-Ненецкий АО": ["янао","ямал","новый уренгой"],
         "Республика Адыгея": ["адыгея","майкоп"],
-        "Калининградская область": ["калининград","калининградская область"],
         "Чеченская Республика": ["чечня","грозный"],
         "Республика Ингушетия": ["ингушетия","магас"],
         "Кабардино-Балкарская Республика": ["кабардино-балкария","налъчик"],
@@ -441,10 +437,21 @@
         "Республика Северная Осетия": ["северная осетия","владикавказ"],
         "Кировская область": ["киров","кировская область"],
         "Еврейская АО": ["еврейская автономная","биробиджан"],
-        "Чукотский АО": ["чукотка","анадырь"]
+        "Чукотский АО": ["чукотка","анадырь"],
+        "Ненецкий АО": ["ненецкий","нарьян-мар"],
+        "Республика Алтай": ["алтай","горно-алтайск"],
+        "Республика Бурятия": ["бурятия","улан-удэ"],
+        "Республика Хакасия": ["хакасия","абакан"],
+        "Республика Тыва": ["тыва","кызыл"],
+        "Тюменская область": ["тюмень","тюменская область"],
+        "Ивановская область": ["иваново","ивановская область"],
+        "Костромская область": ["кострома","костромская область"]
     };
     const allRegionNames = Object.keys(regionAliases);
     
+    // ===========================================
+    // ПАРСИНГ TELEGRAM
+    // ===========================================
     async function fetchWithProxy(url) {
         const proxies = ["https://api.allorigins.win/raw?url=", "https://corsproxy.io/?", "https://cors-anywhere.herokuapp.com/"];
         for (let proxy of proxies) {
@@ -516,7 +523,7 @@
     }
     
     // ===========================================
-    // 7. ЗАГРУЗКА ГРАНИЦ РЕГИОНОВ (GeoJSON с GitHub)
+    // ЗАГРУЗКА ГРАНИЦ С GITHUB
     // ===========================================
     function loadPolygons() {
         const url = "https://raw.githubusercontent.com/azatkh/ru-regions-geojson/main/regions.geojson";
@@ -545,14 +552,12 @@
                     if (!regionStatus[name]) regionStatus[name] = { drone: false, rocket: false };
                     const { drone, rocket } = regionStatus[name];
                     layer.bindPopup(getPopupContent(name, drone, rocket), { className: 'custom-popup' });
-                    // Обычный клик открывает попап (если не активна линейка)
                     layer.off('click');
                     layer.on('click', (e) => { e.target.openPopup(); });
                 }
             }
         }).addTo(map);
         
-        // Если линейка активна в момент загрузки — отключаем pointer-events
         if (rulerModeActive) {
             polygonsLayer.eachLayer(layer => {
                 if (layer._path) layer._path.classList.add('leaflet-interactive-off');
@@ -564,12 +569,8 @@
     }
     
     // ===========================================
-    // 8. ЗАПУСК И СОБЫТИЯ
+    // ЗАПУСК
     // ===========================================
-    const cached = localStorage.getItem("alertCache");
-    if (cached) {
-        try { regionStatus = JSON.parse(cached); } catch(e) {}
-    }
     loadPolygons();
     setTimeout(() => {
         refreshAlerts();
@@ -581,7 +582,6 @@
     document.getElementById('clearRulerBtn').addEventListener('click', () => clearRuler());
     document.getElementById('threatType').addEventListener('change', () => updateRulerDisplay());
     
-    // Панель списка тревог
     const panel = document.getElementById('alertsPanel');
     document.getElementById('openPanelBtn').addEventListener('click', () => panel.classList.add('open'));
     document.getElementById('closePanelBtn').addEventListener('click', () => panel.classList.remove('open'));
