@@ -200,7 +200,8 @@
         <select id="targetType">
             <option value="120">🛸 Обычный БПЛА (120 км/ч)</option>
             <option value="600">⚡ Реактивный БПЛА (600 км/ч)</option>
-            <option value="2500">🚀 Ракета (2500 км/ч)</option>
+            <option value="9000">🚀 Баллистическая ракета (9000 км/ч)</option>
+            <option value="850">🎯 Крылатая ракета (850 км/ч)</option>
         </select>
         <div class="result" id="rulerResult">
             📍 Кликните на карте для точки А<br>
@@ -557,6 +558,22 @@
     let rulerLine = null;
     let savedPopupHandlers = new Map();
 
+    // Максимальные дальности для разных типов целей (в километрах)
+    const maxRange = {
+        "120": 2500,    // Обычный БПЛА (Shahed и аналоги)
+        "600": 1000,    // Реактивный БПЛА
+        "9000": 18000,  // Баллистическая ракета
+        "850": 6500     // Крылатая ракета
+    };
+
+    // Названия типов целей для отображения в предупреждениях
+    const targetNames = {
+        "120": "БПЛА",
+        "600": "реактивного БПЛА",
+        "9000": "баллистической ракеты",
+        "850": "крылатой ракеты"
+    };
+
     function clearRulerVisuals() {
         if (rulerLine) map.removeLayer(rulerLine);
         rulerMarkers.forEach(m => map.removeLayer(m));
@@ -577,11 +594,35 @@
         const p2 = rulerPoints[1];
         const distance = p1.distanceTo(p2) / 1000;
         const speed = parseFloat(document.getElementById('targetType').value);
-        const hours = distance / speed;
-        const minutes = hours * 60;
-        const fullMinutes = Math.floor(minutes);
-        const seconds = Math.round((minutes - fullMinutes) * 60);
-        resultDiv.innerHTML = `📏 Расстояние: <span>${distance.toFixed(2)} км</span><br>⏱️ Время: <span>${fullMinutes} мин ${seconds} с</span>`;
+        
+        // Вычисляем время в пути
+        const hoursTotal = distance / speed;
+        const fullHours = Math.floor(hoursTotal);
+        const remainingMinutes = Math.floor((hoursTotal - fullHours) * 60);
+        const remainingSeconds = Math.round(((hoursTotal - fullHours) * 60 - remainingMinutes) * 60);
+        
+        // Формируем строку времени
+        let timeString = '';
+        if (fullHours > 0) {
+            timeString += `${fullHours} ч `;
+        }
+        if (remainingMinutes > 0 || fullHours === 0) {
+            timeString += `${remainingMinutes} мин `;
+        }
+        if (remainingSeconds > 0 && fullHours === 0) {
+            timeString += `${remainingSeconds} с`;
+        }
+        
+        // Проверяем, не превышает ли дальность максимальную для выбранного типа цели
+        const targetSpeed = document.getElementById('targetType').value;
+        const maxDist = maxRange[targetSpeed];
+        
+        if (distance > maxDist) {
+            const targetName = targetNames[targetSpeed] || "цели";
+            resultDiv.innerHTML = `📏 Расстояние: <span>${distance.toFixed(2)} км</span><br>⏱️ Время: <span>${timeString}</span><br>⚠️ <span style="color:#ff8888;">Превышена дальность ${targetName} (макс. ${maxDist} км)</span>`;
+        } else {
+            resultDiv.innerHTML = `📏 Расстояние: <span>${distance.toFixed(2)} км</span><br>⏱️ Время: <span>${timeString}</span>`;
+        }
     }
 
     function addRulerPoint(latlng) {
