@@ -186,6 +186,7 @@
 
     let regionStates = {};
     let polygonsLayer = null;
+    let labelsLayer = null; // слой для текстовых меток
 
     // ===========================================
     // ЧАСЫ
@@ -206,7 +207,7 @@
     }
 
     // ===========================================
-    // ОНЛАЙН СЧЁТЧИК
+    // ОНЛАЙН СЧЁТЧИК (имитация)
     // ===========================================
     function updateOnlineCounter() {
         const viewers = Math.floor(Math.random() * 5) + 1;
@@ -250,7 +251,7 @@
     }
 
     // ===========================================
-    // СИНОНИМЫ РЕГИОНОВ
+    // СИНОНИМЫ РЕГИОНОВ (оставлены без изменений)
     // ===========================================
     const regionAliases = {
         "Московская область": ["московская область","подмосковье","мо обл","московской обл","московская обл","москва","мск"],
@@ -519,7 +520,72 @@
     }
 
     // ===========================================
-    // ЗАГРУЗКА ПОЛИГОНОВ (ГРАНИЦЫ)
+    // ДОБАВЛЕНИЕ ПОСТОЯННЫХ ТЕКСТОВЫХ МЕТОК НА КАРТУ
+    // ===========================================
+    function addRegionLabels(geoJsonData) {
+        if (labelsLayer) map.removeLayer(labelsLayer);
+        labelsLayer = L.layerGroup().addTo(map);
+        
+        // Проходим по всем features и добавляем метку в центр полигона
+        geoJsonData.features.forEach(feature => {
+            let name = feature.properties?.name || feature.properties?.NAME || feature.properties?.admin_name || "";
+            if (!name) return;
+            
+            // Пытаемся получить центр полигона
+            let center = null;
+            if (feature.geometry.type === "Polygon") {
+                // Берём первую внешнюю оболочку
+                const coords = feature.geometry.coordinates[0];
+                if (coords && coords.length) {
+                    let latSum = 0, lngSum = 0;
+                    for (let i = 0; i < coords.length; i++) {
+                        lngSum += coords[i][0];
+                        latSum += coords[i][1];
+                    }
+                    center = { lat: latSum / coords.length, lng: lngSum / coords.length };
+                }
+            } else if (feature.geometry.type === "MultiPolygon") {
+                // Для мультиполигона берём первый полигон
+                const poly = feature.geometry.coordinates[0][0];
+                if (poly && poly.length) {
+                    let latSum = 0, lngSum = 0;
+                    for (let i = 0; i < poly.length; i++) {
+                        lngSum += poly[i][0];
+                        latSum += poly[i][1];
+                    }
+                    center = { lat: latSum / poly.length, lng: lngSum / poly.length };
+                }
+            }
+            
+            if (center) {
+                const formatted = formatName(name);
+                const labelDiv = L.divIcon({
+                    className: 'region-label-static',
+                    html: `<div style="
+                        background: rgba(0,0,0,0.7);
+                        backdrop-filter: blur(3px);
+                        color: #f0f0f0;
+                        padding: 3px 8px;
+                        border-radius: 6px;
+                        font-size: 11px;
+                        font-weight: bold;
+                        text-align: center;
+                        line-height: 1.3;
+                        white-space: nowrap;
+                        font-family: 'Segoe UI', monospace;
+                        text-shadow: 0 0 2px black;
+                        border: 1px solid rgba(255,255,255,0.2);
+                        pointer-events: none;
+                    ">${formatted}</div>`,
+                    iconSize: [80, 28]
+                });
+                L.marker([center.lat, center.lng], { icon: labelDiv, interactive: false }).addTo(labelsLayer);
+            }
+        });
+    }
+
+    // ===========================================
+    // ЗАГРУЗКА ПОЛИГОНОВ (ГРАНИЦЫ) + МЕТКИ
     // ===========================================
     function loadPolygons() {
         const url = "https://raw.githubusercontent.com/azatkh/ru-regions-geojson/main/regions.geojson";
@@ -552,6 +618,10 @@
                 }
             }
         }).addTo(map);
+        
+        // Добавляем статичные текстовые метки после загрузки границ
+        addRegionLabels(geoData);
+        
         document.getElementById('status').innerHTML = 'Границы загружены';
         setTimeout(() => map.invalidateSize(), 100);
         updateAlertList();
