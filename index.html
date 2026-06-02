@@ -9,7 +9,6 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { background: #0a0e1a; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
         
-        /* Часы */
         .clock {
             position: fixed; top: 20px; right: 20px; z-index: 2000;
             background: rgba(10,14,26,0.85); backdrop-filter: blur(8px);
@@ -20,7 +19,6 @@
         .time-main { font-size: 1.8rem; font-weight: 600; line-height: 1; }
         .date { font-size: 0.65rem; opacity: 0.7; margin-top: 4px; text-transform: uppercase; }
         
-        /* Легенда */
         .legend {
             position: fixed; bottom: 20px; left: 20px; z-index: 2000;
             background: rgba(10,14,26,0.85); backdrop-filter: blur(8px);
@@ -31,7 +29,6 @@
         .legend-item { display: flex; align-items: center; gap: 8px; }
         .legend-color { width: 24px; height: 16px; border-radius: 4px; }
         
-        /* Кнопки управления */
         .toolbar {
             position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
             z-index: 2000; display: flex; gap: 12px; background: rgba(0,0,0,0.7);
@@ -66,7 +63,6 @@
             font-size: 0.7rem; font-family: monospace; white-space: nowrap;
         }
         
-        /* Панель линейки */
         .ruler-panel {
             position: fixed; top: 80px; left: 20px; z-index: 2100;
             background: rgba(10,14,26,0.95); backdrop-filter: blur(12px);
@@ -92,7 +88,6 @@
             font-weight: bold; cursor: pointer;
         }
         
-        /* Панель списка тревог */
         .alerts-panel {
             position: fixed; top: 0; left: -320px; width: 300px; height: 100%;
             background: rgba(10, 14, 26, 0.95); backdrop-filter: blur(12px);
@@ -139,7 +134,6 @@
 <button class="update-btn" id="updateBtn">🔄 Обновить</button>
 <div class="status" id="status">Загрузка...</div>
 
-<!-- Панель линейки -->
 <div id="rulerPanel" class="ruler-panel">
     <h4>📏 Измерение угрозы</h4>
     <select id="threatType" class="threat-select">
@@ -156,7 +150,6 @@
     <small style="font-size:0.65rem; opacity:0.7;">★ Кликните по карте 2 раза — поставьте точки A и B</small>
 </div>
 
-<!-- Панель списка тревог -->
 <div id="alertsPanel" class="alerts-panel">
     <div class="panel-header">
         <h3>🚨 Регионы с тревогой</h3>
@@ -170,6 +163,11 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
     // ===========================================
+    // 0. РЕГИОН, КОТОРЫЙ НИКОГДА НЕ ПОДСВЕЧИВАЕТСЯ
+    // ===========================================
+    const IGNORED_REGIONS = ["Архангельская область"];
+    
+    // ===========================================
     // 1. ИНИЦИАЛИЗАЦИЯ КАРТЫ И ОБЩИХ ДАННЫХ
     // ===========================================
     const map = L.map('map').setView([61, 95], 4.2);
@@ -177,17 +175,15 @@
         attribution: '', subdomains: 'abcd', maxZoom: 10, minZoom: 2
     }).addTo(map);
 
-    // Состояние тревог
-    let regionStatus = {}; // { "регион": { drone: false, rocket: false } }
+    let regionStatus = {};
     const colors = { clear: "#6c757d", drone: "#ffc107", rocket: "#dc3545" };
     let polygonsLayer = null;
 
     // ===========================================
-    // 2. ИНСТРУМЕНТ ЛИНЕЙКИ (исправлено)
+    // 2. ИНСТРУМЕНТ ЛИНЕЙКИ
     // ===========================================
     let rulerModeActive = false;
-    let points = [];          // массив из 0,1,2 маркеров
-    let polyline = null;
+    let points = [];
     let markersLayer = null;
     let lineLayer = null;
     
@@ -323,13 +319,20 @@
     }
     
     // ===========================================
-    // 4. ОБНОВЛЕНИЕ ПОЛИГОНОВ (цвета)
+    // 4. ОБНОВЛЕНИЕ ПОЛИГОНОВ (с учётом игнорируемого региона)
     // ===========================================
     function updateAllPolygons() {
         if (!polygonsLayer) return;
         polygonsLayer.eachLayer(layer => {
             const name = layer.regionName;
-            if (name && regionStatus[name]) {
+            if (!name) return;
+            // Принудительно сбрасываем тревоги для игнорируемых регионов
+            if (IGNORED_REGIONS.includes(name)) {
+                layer.setStyle({ fillColor: colors.clear, fillOpacity: 0.7 });
+                layer.getPopup().setContent(getPopupContent(name, false, false));
+                return;
+            }
+            if (regionStatus[name]) {
                 const drone = regionStatus[name].drone;
                 const rocket = regionStatus[name].rocket;
                 let fillColor = colors.clear;
@@ -337,18 +340,22 @@
                 else if (drone) fillColor = colors.drone;
                 layer.setStyle({ fillColor, fillOpacity: 0.7 });
                 layer.getPopup().setContent(getPopupContent(name, drone, rocket));
+            } else {
+                layer.setStyle({ fillColor: colors.clear, fillOpacity: 0.7 });
+                layer.getPopup().setContent(getPopupContent(name, false, false));
             }
         });
         updateAlertsPanel();
     }
     
     // ===========================================
-    // 5. ПАНЕЛЬ СПИСКА ТРЕВОГ
+    // 5. ПАНЕЛЬ СПИСКА ТРЕВОГ (игнорируем регион)
     // ===========================================
     function updateAlertsPanel() {
         const panelContent = document.getElementById('panelContent');
         const active = [];
         for (const [name, flags] of Object.entries(regionStatus)) {
+            if (IGNORED_REGIONS.includes(name)) continue;
             if (flags.rocket) active.push({ name, type: 'rocket', label: '🔴 Ракетная опасность' });
             else if (flags.drone) active.push({ name, type: 'drone', label: '🟡 Опасность БПЛА' });
         }
@@ -372,7 +379,7 @@
     }
     
     // ===========================================
-    // 6. ПАРСИНГ TELEGRAM (исправлен: убрана автоматическая тревога для всех регионов)
+    // 6. ПАРСИНГ TELEGRAM (игнорируем Архангельскую область)
     // ===========================================
     const regionAliases = {
         "Москва": ["москва","мск","город москва","московская область","подмосковье","мо обл","московской обл","московская обл"],
@@ -404,7 +411,7 @@
         "Приморский край": ["владивосток","приморский край","приморья"],
         "Хабаровский край": ["хабаровск","хабаровский край"],
         "Амурская область": ["амурская область","благовещенск","амурской обл"],
-        "Архангельская область": ["архангельск","архангельская область"],
+        // Архангельская область УДАЛЕНА из списка — НИКОГДА не будет матчиться
         "Мурманская область": ["мурманск","мурманская область"],
         "Республика Карелия": ["карелия","петрозаводск"],
         "Республика Коми": ["коми","сыктывкар"],
@@ -478,7 +485,6 @@
             const newStatus = JSON.parse(JSON.stringify(regionStatus));
             for (let post of fresh) {
                 const text = post.text;
-                // Игнорируем общие фразы "все регионы" — они не должны подсвечивать всё подряд
                 if (/все регионы|по всей россии/i.test(text)) continue;
                 
                 let matched = [];
@@ -491,6 +497,8 @@
                 const isRocket = /ракетная опасность|ракетная тревога/i.test(text);
                 const isDrone = /бпла|беспилот/i.test(text);
                 for (let reg of matched) {
+                    // Игнорируем запрещённый регион
+                    if (IGNORED_REGIONS.includes(reg)) continue;
                     if (!newStatus[reg]) newStatus[reg] = { drone: false, rocket: false };
                     if (isOtboy) {
                         if (isRocket) newStatus[reg].rocket = false;
@@ -501,6 +509,10 @@
                         else if (isDrone) newStatus[reg].drone = true;
                     }
                 }
+            }
+            // Принудительно обнуляем статус для игнорируемого региона
+            for (let ignored of IGNORED_REGIONS) {
+                newStatus[ignored] = { drone: false, rocket: false };
             }
             regionStatus = newStatus;
             updateAllPolygons();
@@ -529,6 +541,9 @@
         polygonsLayer = L.geoJSON(geoData, {
             style: (feature) => {
                 let name = feature.properties?.name || feature.properties?.NAME || "";
+                if (IGNORED_REGIONS.includes(name)) {
+                    return { color: "#fff", weight: 2.2, fillColor: colors.clear, fillOpacity: 0.7 };
+                }
                 let d = false, r = false;
                 if (regionStatus[name]) { d = regionStatus[name].drone; r = regionStatus[name].rocket; }
                 let fillColor = colors.clear;
@@ -541,9 +556,13 @@
                 if (name) {
                     layer.regionName = name;
                     if (!regionStatus[name]) regionStatus[name] = { drone: false, rocket: false };
-                    const drone = regionStatus[name].drone;
-                    const rocket = regionStatus[name].rocket;
-                    layer.bindPopup(getPopupContent(name, drone, rocket), { className: 'custom-popup' });
+                    if (IGNORED_REGIONS.includes(name)) {
+                        layer.bindPopup(getPopupContent(name, false, false), { className: 'custom-popup' });
+                    } else {
+                        const drone = regionStatus[name].drone;
+                        const rocket = regionStatus[name].rocket;
+                        layer.bindPopup(getPopupContent(name, drone, rocket), { className: 'custom-popup' });
+                    }
                 }
             }
         }).addTo(map);
@@ -565,7 +584,13 @@
     // ===========================================
     const cached = localStorage.getItem("alertCache");
     if (cached) {
-        try { regionStatus = JSON.parse(cached); } catch(e) {}
+        try { 
+            regionStatus = JSON.parse(cached);
+            // Очищаем статус для игнорируемого региона в кэше
+            for (let ignored of IGNORED_REGIONS) {
+                if (regionStatus[ignored]) regionStatus[ignored] = { drone: false, rocket: false };
+            }
+        } catch(e) {}
     }
     loadPolygons();
     setTimeout(() => {
