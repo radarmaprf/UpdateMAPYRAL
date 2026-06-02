@@ -176,7 +176,7 @@
     }).addTo(map);
 
     // ===========================================
-    // ЦВЕТА (отбой, БПЛА, ракетная)
+    // ЦВЕТА (только отбой, БПЛА, ракетная)
     // ===========================================
     const colors = {
         clear: "#6c757d",          // серый
@@ -206,7 +206,7 @@
     }
 
     // ===========================================
-    // ОНЛАЙН СЧЁТЧИК (имитация)
+    // ОНЛАЙН СЧЁТЧИК
     // ===========================================
     function updateOnlineCounter() {
         const viewers = Math.floor(Math.random() * 5) + 1;
@@ -221,7 +221,7 @@
     setInterval(updateOnlineCounter, 15000);
 
     // ===========================================
-    // ЛОГИКА ТРЕВОГ
+    // ЛОГИКА ТРЕВОГ (без "внимание")
     // ===========================================
     function getCurrentLevel(state) {
         if (!state) return 0;
@@ -250,7 +250,7 @@
     }
 
     // ===========================================
-    // СИНОНИМЫ РЕГИОНОВ (расширенные)
+    // СИНОНИМЫ РЕГИОНОВ
     // ===========================================
     const regionAliases = {
         "Московская область": ["московская область","подмосковье","мо обл","московской обл","московская обл","москва","мск"],
@@ -321,7 +321,7 @@
     };
 
     // ===========================================
-    // БЫСТРЫЙ ПАРСИНГ TELEGRAM (обход кэша, только свежие посты)
+    // ПАРСИНГ TELEGRAM (без учёта "внимание")
     // ===========================================
     const proxies = [
         "https://api.allorigins.win/raw?url=",
@@ -333,22 +333,13 @@
     const fallbackChannel = "https://t.me/s/radarrussiia";
 
     async function fetchWithProxy(url, proxyList) {
-        const cacheBuster = `&_=${Date.now()}`;
         for (let proxy of proxyList) {
             try {
-                let proxyUrl = proxy + encodeURIComponent(url);
-                if (proxy.includes('?') || proxy.includes('&')) {
-                    proxyUrl += cacheBuster;
-                } else {
-                    proxyUrl += cacheBuster.replace('&', '?');
-                }
-                const response = await fetch(proxyUrl, { 
-                    signal: AbortSignal.timeout(8000),
-                    cache: 'no-store'
-                });
+                const proxyUrl = proxy + encodeURIComponent(url);
+                const response = await fetch(proxyUrl, { signal: AbortSignal.timeout(10000) });
                 if (response.ok) {
                     const text = await response.text();
-                    if (text && text.length > 1000) return text;
+                    if (text && text.length > 2000) return text;
                 }
             } catch (e) { console.warn(`Прокси ${proxy} не сработал`, e); }
         }
@@ -376,12 +367,7 @@
             html = await fetchWithProxy(channel, proxies);
         } catch(e) {
             console.warn("Основной канал не загрузился, пробуем резервный");
-            try {
-                html = await fetchWithProxy(fallbackChannel, proxies);
-            } catch(e2) {
-                console.error("Оба канала недоступны");
-                return {};
-            }
+            html = await fetchWithProxy(fallbackChannel, proxies);
         }
         if (!html) return {};
 
@@ -394,10 +380,9 @@
                 text: m[2].replace(/<[^>]*>/g, ' ').toLowerCase()
             });
         }
-        // Сортируем от новых к старым, берём ТОЛЬКО последние 10 для быстрой реакции
-        posts.sort((a,b) => b.id - a.id);
-        const fresh = posts.slice(0, 10);
-        console.log(`Постов получено: ${posts.length}, анализируем ${fresh.length} самых свежих`);
+        posts.sort((a,b) => a.id - b.id);
+        const fresh = posts.slice(-60);
+        console.log(`Постов получено: ${posts.length}, анализируем ${fresh.length}`);
 
         const updates = {};
 
@@ -534,7 +519,7 @@
     }
 
     // ===========================================
-    // ЗАГРУЗКА ГРАНИЦ (ПОЛИГОНОВ)
+    // ЗАГРУЗКА ПОЛИГОНОВ (ГРАНИЦЫ)
     // ===========================================
     function loadPolygons() {
         const url = "https://raw.githubusercontent.com/azatkh/ru-regions-geojson/main/regions.geojson";
@@ -598,7 +583,7 @@
         } catch(e) {}
     }
     refreshAlerts();
-    setInterval(refreshAlerts, 15000); // обновление каждые 15 секунд для быстрой реакции
+    setInterval(refreshAlerts, 30000);
     loadPolygons();
     document.getElementById('updateBtn').addEventListener('click', () => refreshAlerts());
     window.addEventListener('resize', () => map.invalidateSize());
