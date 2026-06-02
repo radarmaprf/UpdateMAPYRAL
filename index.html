@@ -3,46 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Air Alert Map — locatorru</title>
+    <title>Air Alert Map — линейка угроз</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { background: #0a0e1a; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
         
-        .online-counter {
-            position: fixed;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 2100;
-            background: rgba(10, 14, 26, 0.85);
-            backdrop-filter: blur(8px);
-            border-radius: 40px;
-            padding: 6px 18px;
-            color: #e8eef2;
-            font-family: 'JetBrains Mono', monospace;
-            font-weight: bold;
-            font-size: 1rem;
-            border: 1px solid rgba(255,255,255,0.25);
-            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            pointer-events: none;
-        }
-        .online-counter::before {
-            content: "👁️";
-            font-size: 1.1rem;
-        }
-        .online-count {
-            font-weight: 800;
-            color: #2ecc71;
-            text-shadow: 0 0 4px rgba(46,204,113,0.3);
-            min-width: 30px;
-            display: inline-block;
-            text-align: center;
-        }
-
+        /* Часы */
         .clock {
             position: fixed; top: 20px; right: 20px; z-index: 2000;
             background: rgba(10,14,26,0.85); backdrop-filter: blur(8px);
@@ -52,6 +19,8 @@
         }
         .time-main { font-size: 1.8rem; font-weight: 600; line-height: 1; }
         .date { font-size: 0.65rem; opacity: 0.7; margin-top: 4px; text-transform: uppercase; }
+        
+        /* Легенда */
         .legend {
             position: fixed; bottom: 20px; left: 20px; z-index: 2000;
             background: rgba(10,14,26,0.85); backdrop-filter: blur(8px);
@@ -61,134 +30,282 @@
         }
         .legend-item { display: flex; align-items: center; gap: 8px; }
         .legend-color { width: 24px; height: 16px; border-radius: 4px; }
+        
+        /* Кнопки управления */
+        .toolbar {
+            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+            z-index: 2000; display: flex; gap: 12px; background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(12px); padding: 8px 16px; border-radius: 40px;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        .tool-btn {
+            background: rgba(30,35,50,0.9); border: none; color: white;
+            padding: 6px 16px; border-radius: 30px; font-size: 0.85rem;
+            font-weight: bold; cursor: pointer; transition: 0.2s;
+            font-family: monospace; letter-spacing: 0.5px;
+        }
+        .tool-btn.active { background: #28a745; box-shadow: 0 0 8px #28a745; }
+        .tool-btn:hover { background: #28a745; transform: scale(1.02); }
+        .tool-btn.danger { background: #dc3545; }
+        .tool-btn.danger:hover { background: #b02a37; }
+        
         .update-btn {
             position: fixed; bottom: 20px; right: 20px; z-index: 2000;
             background: rgba(0,0,0,0.8); backdrop-filter: blur(8px);
             border: 1px solid rgba(255,255,255,0.3); border-radius: 40px;
             padding: 10px 22px; color: white; font-size: 1rem;
             font-weight: bold; cursor: pointer; transition: 0.2s;
-            font-family: monospace; letter-spacing: 0.5px;
+            font-family: monospace;
         }
-        .update-btn:hover { background: #28a745; border-color: #28a745; transform: scale(1.02); }
+        .update-btn:hover { background: #28a745; border-color: #28a745; }
+        
         .status {
             position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
             z-index: 2000; background: rgba(0,0,0,0.7); backdrop-filter: blur(8px);
             border-radius: 20px; padding: 4px 14px; color: #ccc;
             font-size: 0.7rem; font-family: monospace; white-space: nowrap;
         }
-        .custom-popup .leaflet-popup-content-wrapper {
-            background: #1a1f2e; color: #e8eef2; border-radius: 12px; border-left: 4px solid;
+        
+        /* Панель линейки */
+        .ruler-panel {
+            position: fixed; top: 80px; left: 20px; z-index: 2100;
+            background: rgba(10,14,26,0.95); backdrop-filter: blur(12px);
+            border-radius: 16px; padding: 12px 18px; width: 260px;
+            border: 1px solid rgba(255,255,255,0.2); display: none;
+            flex-direction: column; gap: 10px; font-family: monospace;
         }
-        .leaflet-control-attribution { display: none !important; }
-
-        .drawer-btn {
-            position: fixed; top: 20px; left: 20px; z-index: 2100;
-            background: rgba(10,14,26,0.9); backdrop-filter: blur(8px);
-            border: 1px solid rgba(255,255,255,0.2);
-            width: 48px; height: 48px; border-radius: 50%;
-            display: flex; align-items: center; justify-content: center;
-            cursor: pointer; transition: 0.2s; color: white; font-size: 26px;
-            font-weight: bold; font-family: monospace;
+        .ruler-panel.show { display: flex; }
+        .ruler-panel h4 { margin: 0 0 5px 0; color: #ffc107; font-size: 1rem; }
+        .threat-select {
+            background: #1a1f2e; color: white; border: 1px solid #555;
+            padding: 6px; border-radius: 8px; font-size: 0.8rem;
         }
-        .drawer-btn:hover { background: #2c3e66; transform: scale(1.05); }
-        .drawer {
+        .distance-info { background: #00000055; padding: 8px; border-radius: 8px; margin-top: 5px; }
+        .distance-info p { margin: 4px 0; font-size: 0.75rem; }
+        .time-result { font-size: 1.1rem; font-weight: bold; color: #ffc107; text-align: center; }
+        
+        .alert-list-btn {
+            position: fixed; top: 20px; left: 20px; z-index: 2000;
+            background: rgba(220,53,69,0.9); backdrop-filter: blur(8px);
+            border: 1px solid rgba(255,255,255,0.3); border-radius: 40px;
+            padding: 8px 18px; color: white; font-size: 0.9rem;
+            font-weight: bold; cursor: pointer;
+        }
+        
+        /* Панель списка тревог */
+        .alerts-panel {
             position: fixed; top: 0; left: -320px; width: 300px; height: 100%;
-            background: rgba(15, 20, 30, 0.96); backdrop-filter: blur(12px);
-            z-index: 2200; transition: left 0.3s ease; border-right: 1px solid rgba(255,255,255,0.2);
-            display: flex; flex-direction: column; box-shadow: 4px 0 20px rgba(0,0,0,0.5);
-            font-family: 'Segoe UI', monospace;
+            background: rgba(10, 14, 26, 0.95); backdrop-filter: blur(12px);
+            z-index: 3000; transition: left 0.3s ease; border-right: 1px solid rgba(255,255,255,0.2);
+            display: flex; flex-direction: column;
         }
-        .drawer.open { left: 0; }
-        .drawer-header {
-            padding: 20px; border-bottom: 1px solid rgba(255,255,255,0.2);
+        .alerts-panel.open { left: 0; }
+        .panel-header {
+            padding: 20px 16px; border-bottom: 1px solid rgba(255,255,255,0.2);
             display: flex; justify-content: space-between; align-items: center;
-            color: #e8eef2; font-weight: bold; font-size: 1.2rem;
         }
-        .drawer-close {
-            background: none; border: none; color: #ff8888; font-size: 28px;
-            cursor: pointer; line-height: 1; padding: 0 8px;
-        }
-        .drawer-content {
-            flex: 1; overflow-y: auto; padding: 15px;
-        }
-        .region-item {
-            background: rgba(255,255,255,0.08); margin-bottom: 10px;
-            border-radius: 10px; padding: 12px; border-left: 4px solid;
-        }
-        .region-name { font-weight: bold; font-size: 1rem; margin-bottom: 5px; }
-        .region-level { font-size: 0.75rem; opacity: 0.8; }
-        .empty-state { color: #aaa; text-align: center; padding: 30px 15px; font-style: italic; }
-
+        .close-panel { background: none; border: none; color: white; font-size: 1.8rem; cursor: pointer; }
+        .panel-content { flex: 1; overflow-y: auto; padding: 12px; }
+        .alert-region-item { background: rgba(30,35,50,0.7); margin-bottom: 10px; padding: 12px; border-radius: 12px; border-left: 4px solid; }
+        
+        .custom-popup .leaflet-popup-content-wrapper { background: #1a1f2e; color: #e8eef2; border-radius: 12px; }
+        .leaflet-control-attribution { display: none !important; }
+        
         @media (max-width: 600px) {
-            .online-counter { top: 10px; font-size: 0.75rem; padding: 4px 12px; }
-            .drawer { width: 280px; left: -290px; }
-            .drawer-btn { width: 40px; height: 40px; font-size: 22px; top: 10px; left: 10px; }
-            .time-main { font-size: 1.2rem; }
-            .clock { padding: 4px 12px; top: 10px; right: 10px; }
-            .legend { bottom: 10px; left: 10px; padding: 8px 12px; font-size: 0.65rem; }
-            .legend-color { width: 20px; height: 14px; }
-            .update-btn { bottom: 10px; right: 10px; padding: 8px 16px; font-size: 0.85rem; }
-            .status { bottom: 10px; font-size: 0.6rem; }
+            .ruler-panel { width: 220px; top: 70px; left: 10px; padding: 8px 12px; }
+            .toolbar { top: 10px; gap: 6px; padding: 5px 12px; }
+            .tool-btn { padding: 4px 12px; font-size: 0.7rem; }
         }
     </style>
 </head>
 <body>
 
-<div class="online-counter">
-    <span>Онлайн:</span>
-    <span class="online-count" id="onlineCount">---</span>
-</div>
-
-<div class="drawer-btn" id="drawerBtn">☰</div>
-
-<div class="drawer" id="drawer">
-    <div class="drawer-header">
-        <span>⚠️ Регионы с тревогой</span>
-        <button class="drawer-close" id="drawerClose">✕</button>
-    </div>
-    <div class="drawer-content" id="drawerContent">
-        <div class="empty-state">Загрузка данных...</div>
-    </div>
-</div>
-
 <div class="clock">
     <div class="time-main" id="liveTime">--:--</div>
     <div class="date" id="liveDate">--</div>
 </div>
+<button class="alert-list-btn" id="openPanelBtn">⚠️ Список тревог</button>
+
+<div class="toolbar">
+    <button id="rulerBtn" class="tool-btn">📏 Линейка (on/off)</button>
+    <button id="clearRulerBtn" class="tool-btn danger">🗑 Сбросить</button>
+</div>
+
 <div class="legend">
-    <div class="legend-item"><div class="legend-color" style="background: #6c757d;"></div> <span>⚪ Отбой / Спокойно</span></div>
-    <div class="legend-item"><div class="legend-color" style="background: #ffc107;"></div> <span>🟡 Опасность БПЛА</span></div>
+    <div class="legend-item"><div class="legend-color" style="background: #6c757d;"></div> <span>⚪ Отбой</span></div>
+    <div class="legend-item"><div class="legend-color" style="background: #ffc107;"></div> <span>🟡 БПЛА</span></div>
     <div class="legend-item"><div class="legend-color" style="background: #dc3545;"></div> <span>🔴 Ракетная опасность</span></div>
 </div>
 <button class="update-btn" id="updateBtn">🔄 Обновить</button>
 <div class="status" id="status">Загрузка...</div>
+
+<!-- Панель линейки -->
+<div id="rulerPanel" class="ruler-panel">
+    <h4>📏 Измерение угрозы</h4>
+    <select id="threatType" class="threat-select">
+        <option value="drone">🛩 Обычный БПЛА (180 км/ч)</option>
+        <option value="jet_drone">🚀 Реактивный БПЛА (450 км/ч)</option>
+        <option value="cruise">✈️ Крылатая ракета (850 км/ч)</option>
+        <option value="ballistic">💥 Баллистическая ракета (9000 км/ч)</option>
+    </select>
+    <div class="distance-info" id="distanceInfo">
+        <p>📏 Расстояние: <span id="distKm">0</span> км</p>
+        <p>⏱ Время подлёта:</p>
+        <div id="timeResult" class="time-result">—</div>
+    </div>
+    <small style="font-size:0.65rem; opacity:0.7;">★ Кликните по карте 2 раза — поставьте точки A и B</small>
+</div>
+
+<!-- Панель списка тревог -->
+<div id="alertsPanel" class="alerts-panel">
+    <div class="panel-header">
+        <h3>🚨 Регионы с тревогой</h3>
+        <button class="close-panel" id="closePanelBtn">&times;</button>
+    </div>
+    <div class="panel-content" id="panelContent">...</div>
+</div>
 
 <div id="map" style="width: 100vw; height: 100vh; position: absolute; top: 0; left: 0;"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
     // ===========================================
-    // КАРТА
+    // 1. ИНИЦИАЛИЗАЦИЯ КАРТЫ И ОБЩИХ ДАННЫХ
     // ===========================================
     const map = L.map('map').setView([61, 95], 4.2);
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
         attribution: '', subdomains: 'abcd', maxZoom: 10, minZoom: 2
     }).addTo(map);
 
-    // ===========================================
-    // ЦВЕТА (отбой, БПЛА, ракетная)
-    // ===========================================
-    const colors = {
-        clear: "#6c757d",          // серый
-        droneDanger: "#ffc107",    // жёлтый
-        rocket: "#dc3545"          // красный
-    };
-
-    let regionStates = {};
+    // Состояние тревог
+    let regionStatus = {}; // { "регион": { drone: false, rocket: false } }
+    const colors = { clear: "#6c757d", drone: "#ffc107", rocket: "#dc3545" };
     let polygonsLayer = null;
 
     // ===========================================
-    // ЧАСЫ
+    // 2. ИНСТРУМЕНТ ЛИНЕЙКИ (исправлено)
+    // ===========================================
+    let rulerModeActive = false;
+    let points = [];          // массив из 0,1,2 маркеров
+    let polyline = null;
+    let markersLayer = null;
+    let lineLayer = null;
+    
+    const speeds = {
+        drone: 180,
+        jet_drone: 450,
+        cruise: 850,
+        ballistic: 9000
+    };
+    
+    function calculateTime(distanceKm, speedKmh) {
+        if (distanceKm <= 0) return "0 мин";
+        const hours = distanceKm / speedKmh;
+        const totalMinutes = hours * 60;
+        if (totalMinutes < 1) return "< 1 мин";
+        const hrs = Math.floor(totalMinutes / 60);
+        const mins = Math.floor(totalMinutes % 60);
+        if (hrs > 0) return `${hrs} ч ${mins} мин`;
+        return `${mins} мин`;
+    }
+    
+    function updateRulerDisplay() {
+        if (points.length < 2) {
+            document.getElementById('distKm').innerText = '0';
+            document.getElementById('timeResult').innerHTML = '—';
+            return;
+        }
+        const latlngA = points[0].getLatLng();
+        const latlngB = points[1].getLatLng();
+        const distance = latlngA.distanceTo(latlngB) / 1000;
+        document.getElementById('distKm').innerText = distance.toFixed(1);
+        const threatType = document.getElementById('threatType').value;
+        const speed = speeds[threatType];
+        const timeStr = calculateTime(distance, speed);
+        document.getElementById('timeResult').innerHTML = timeStr;
+    }
+    
+    function updateRulerGraphics() {
+        if (lineLayer) map.removeLayer(lineLayer);
+        if (markersLayer) map.removeLayer(markersLayer);
+        if (points.length === 0) return;
+        markersLayer = L.layerGroup().addTo(map);
+        points.forEach(m => markersLayer.addLayer(m));
+        if (points.length === 2) {
+            const latlngs = points.map(p => p.getLatLng());
+            lineLayer = L.polyline(latlngs, { color: '#ffc107', weight: 4, dashArray: '8, 6', opacity: 0.9 }).addTo(map);
+        }
+        updateRulerDisplay();
+    }
+    
+    function addRulerPoint(e) {
+        if (!rulerModeActive) return;
+        if (points.length >= 2) clearRuler();
+        const marker = L.marker(e.latlng, { 
+            draggable: true, 
+            icon: L.divIcon({ 
+                className: 'ruler-marker', 
+                html: `<div style="background:#ffc107; width:12px; height:12px; border-radius:50%; border:2px solid white;"></div>`, 
+                iconSize: [12,12] 
+            }) 
+        });
+        marker.on('dragend', () => {
+            if (points.length === 2) updateRulerGraphics();
+            else updateRulerDisplay();
+        });
+        points.push(marker);
+        updateRulerGraphics();
+    }
+    
+    function clearRuler() {
+        if (lineLayer) map.removeLayer(lineLayer);
+        if (markersLayer) map.removeLayer(markersLayer);
+        points.forEach(m => { if (m) m.remove(); });
+        points = [];
+        lineLayer = null;
+        markersLayer = null;
+        updateRulerDisplay();
+    }
+    
+    // === ИСПРАВЛЕННАЯ ФУНКЦИЯ ВКЛЮЧЕНИЯ ЛИНЕЙКИ ===
+    function setRulerMode(active) {
+        rulerModeActive = active;
+        const rulerBtn = document.getElementById('rulerBtn');
+        const panel = document.getElementById('rulerPanel');
+        
+        if (active) {
+            rulerBtn.classList.add('active');
+            panel.classList.add('show');
+            map.getContainer().style.cursor = 'crosshair';
+            
+            // Отключаем все обработчики кликов на полигонах (чтобы не мешали)
+            if (polygonsLayer) {
+                polygonsLayer.eachLayer(layer => {
+                    layer.off('click');
+                });
+            }
+            // Глобальный обработчик карты – будет срабатывать даже при клике на полигон,
+            // потому что у полигонов больше нет своего обработчика, который бы перехватывал событие.
+            map.on('click', addRulerPoint);
+        } else {
+            rulerBtn.classList.remove('active');
+            panel.classList.remove('show');
+            map.getContainer().style.cursor = '';
+            map.off('click', addRulerPoint);
+            
+            // Восстанавливаем стандартное поведение полигонов (открытие попапа по клику)
+            if (polygonsLayer) {
+                polygonsLayer.eachLayer(layer => {
+                    layer.off('click');
+                    layer.on('click', (e) => { e.target.openPopup(); });
+                });
+            }
+            clearRuler();
+        }
+    }
+    
+    // ===========================================
+    // 3. ЧАСЫ И ФОРМАТИРОВАНИЕ
     // ===========================================
     function updateClock() {
         const now = new Date();
@@ -197,67 +314,81 @@
     }
     updateClock();
     setInterval(updateClock, 60000);
-
+    
     function formatName(name) {
         if (!name) return '';
         const parts = name.split(' ');
         if (parts.length === 1) return parts[0];
         return parts[0] + '<br>' + parts.slice(1).join(' ');
     }
-
-    // ===========================================
-    // ОНЛАЙН СЧЁТЧИК (имитация, можно убрать или оставить)
-    // ===========================================
-    function updateOnlineCounter() {
-        const viewers = Math.floor(Math.random() * 5) + 1;
-        const countElement = document.getElementById('onlineCount');
-        if (countElement) {
-            countElement.textContent = viewers;
-            countElement.style.transform = 'scale(1.1)';
-            setTimeout(() => { if (countElement) countElement.style.transform = 'scale(1)'; }, 200);
-        }
-    }
-    updateOnlineCounter();
-    setInterval(updateOnlineCounter, 15000);
-
-    // ===========================================
-    // ЛОГИКА ТРЕВОГ
-    // ===========================================
-    function getCurrentLevel(state) {
-        if (!state) return 0;
-        if (state.rocket) return 3;
-        if (state.droneDanger) return 2;
-        return 0;
-    }
-
-    function getLevelText(level) {
-        if (level === 2) return "🟡 Опасность БПЛА";
-        if (level === 3) return "🔴 Ракетная опасность";
-        return "⚪ Отбой / Спокойно";
-    }
-
-    function getLevelColor(level) {
-        if (level === 2) return "#ffc107";
-        if (level === 3) return "#dc3545";
-        return "#adb5bd";
-    }
-
-    function getPopupContent(regionName, level) {
+    
+    function getPopupContent(regionName, drone, rocket) {
         const formatted = formatName(regionName);
-        const text = getLevelText(level);
-        const color = getLevelColor(level);
-        return `<div style="font-family:'Segoe UI';min-width:140px;"><b style="font-size:1rem;">${formatted}</b><br><span style="color:${color}">${text}</span></div>`;
+        let text = "", color = "";
+        if (rocket) { text = "🔴 РАКЕТНАЯ ОПАСНОСТЬ!"; color = "#ff8888"; }
+        else if (drone) { text = "🟡 Опасность БПЛА"; color = "#ffc107"; }
+        else { text = "⚪ Отбой"; color = "#adb5bd"; }
+        return `<div><b>${formatted}</b><br><span style="color:${color}">${text}</span></div>`;
     }
-
+    
     // ===========================================
-    // СИНОНИМЫ РЕГИОНОВ
+    // 4. ОБНОВЛЕНИЕ ПОЛИГОНОВ (цвета)
+    // ===========================================
+    function updateAllPolygons() {
+        if (!polygonsLayer) return;
+        polygonsLayer.eachLayer(layer => {
+            const name = layer.regionName;
+            if (name && regionStatus[name]) {
+                const drone = regionStatus[name].drone;
+                const rocket = regionStatus[name].rocket;
+                let fillColor = colors.clear;
+                if (rocket) fillColor = colors.rocket;
+                else if (drone) fillColor = colors.drone;
+                layer.setStyle({ fillColor, fillOpacity: 0.7 });
+                layer.getPopup().setContent(getPopupContent(name, drone, rocket));
+            }
+        });
+        updateAlertsPanel();
+    }
+    
+    // ===========================================
+    // 5. ПАНЕЛЬ СПИСКА ТРЕВОГ
+    // ===========================================
+    function updateAlertsPanel() {
+        const panelContent = document.getElementById('panelContent');
+        const active = [];
+        for (const [name, flags] of Object.entries(regionStatus)) {
+            if (flags.rocket) active.push({ name, type: 'rocket', label: '🔴 Ракетная опасность' });
+            else if (flags.drone) active.push({ name, type: 'drone', label: '🟡 Опасность БПЛА' });
+        }
+        if (active.length === 0) {
+            panelContent.innerHTML = '<div class="empty-message">Нет активных тревог</div>';
+            return;
+        }
+        active.sort((a,b) => {
+            if (a.type === 'rocket' && b.type !== 'rocket') return -1;
+            if (a.type !== 'rocket' && b.type === 'rocket') return 1;
+            return a.name.localeCompare(b.name);
+        });
+        let html = '';
+        for (const reg of active) {
+            html += `<div class="alert-region-item" style="border-left-color: ${reg.type === 'rocket' ? '#dc3545' : '#ffc107'}">
+                        <div class="region-name">${reg.name}</div>
+                        <div class="alert-type">${reg.label}</div>
+                    </div>`;
+        }
+        panelContent.innerHTML = html;
+    }
+    
+    // ===========================================
+    // 6. ПАРСИНГ TELEGRAM
     // ===========================================
     const regionAliases = {
-        "Московская область": ["московская область","подмосковье","мо обл","московской обл","московская обл","москва","мск"],
+        "Москва": ["москва","мск","город москва","московская область","подмосковье","мо обл","московской обл","московская обл"],
         "Санкт-Петербург": ["санкт-петербург","питер","спб","ленинград"],
         "Ленинградская область": ["ленинградская область","ленобласть","ленинградской обл"],
-        "Белгородская область": ["белгород","белгородская область","белгородской обл"],
-        "Брянская область": ["брянск","брянская область","брянской обл"],
+        "Белгородская область": ["белгород","белгородская область","белгородской обл","белгородская обл"],
+        "Брянская область": ["брянск","брянская область","брянской обл","брянская обл","брянщина"],
         "Воронежская область": ["воронеж","воронежская область","воронежской обл"],
         "Курская область": ["курск","курская область","курской обл"],
         "Краснодарский край": ["краснодар","кубань","краснодарский край","краснодарского края"],
@@ -292,8 +423,8 @@
         "Республика Дагестан": ["дагестан","махачкала"],
         "Республика Башкортостан": ["башкортостан","уфа","республика башкортостан"],
         "Удмуртская Республика": ["удмуртия","ижевск"],
-        "Чувашия": ["чувашская республика","чебоксары"],
-        "Марий Эл": ["республика марий эл","йошкар-ола"],
+        "Чувашская Республика": ["чувашия","чебоксары"],
+        "Республика Марий Эл": ["марий эл","йошкар-ола"],
         "Республика Мордовия": ["мордовия","саранск"],
         "Кировская область": ["киров","кировская область"],
         "Ульяновская область": ["ульяновск","ульяновская область"],
@@ -319,293 +450,161 @@
         "Еврейская АО": ["еврейская автономная","биробиджан"],
         "Чукотский АО": ["чукотка","анадырь"]
     };
-
-    // ===========================================
-    // ПАРСИНГ TELEGRAM (без учёта "внимание")
-    // ===========================================
-    const proxies = [
-        "https://api.allorigins.win/raw?url=",
-        "https://cors-anywhere.herokuapp.com/",
-        "https://corsproxy.io/?",
-        "https://thingproxy.freeboard.io/fetch/"
-    ];
-    const channel = "https://t.me/s/locatorru";
-    const fallbackChannel = "https://t.me/s/radarrussiia";
-
-    async function fetchWithProxy(url, proxyList) {
-        for (let proxy of proxyList) {
+    const allRegionNames = Object.keys(regionAliases);
+    
+    async function fetchWithProxy(url) {
+        const proxies = ["https://api.allorigins.win/raw?url=", "https://corsproxy.io/?", "https://cors-anywhere.herokuapp.com/"];
+        for (let proxy of proxies) {
             try {
-                const proxyUrl = proxy + encodeURIComponent(url);
-                const response = await fetch(proxyUrl, { signal: AbortSignal.timeout(10000) });
-                if (response.ok) {
-                    const text = await response.text();
-                    if (text && text.length > 2000) return text;
+                const res = await fetch(proxy + encodeURIComponent(url), { signal: AbortSignal.timeout(8000) });
+                if (res.ok) {
+                    const txt = await res.text();
+                    if (txt && txt.length > 2000) return txt;
                 }
-            } catch (e) { console.warn(`Прокси ${proxy} не сработал`, e); }
+            } catch(e) {}
         }
-        throw new Error("Все прокси недоступны");
+        throw new Error("Нет прокси");
     }
-
-    function isGlobalClear(text) {
-        const patterns = [
-            /отбой опасности бпла по всем ранее регионам/i,
-            /отбой по всем регионам/i,
-            /все тревоги сняты/i,
-            /снятие всех тревог/i,
-            /отбой по всем/i,
-            /глобальный отбой/i,
-            /полная отмена тревог/i,
-            /все угрозы сняты/i,
-            /отбой для всех регионов/i
-        ];
-        return patterns.some(p => p.test(text));
-    }
-
-    async function parseTelegramAlerts() {
-        let html = null;
-        try {
-            html = await fetchWithProxy(channel, proxies);
-        } catch(e) {
-            console.warn("Основной канал не загрузился, пробуем резервный");
-            html = await fetchWithProxy(fallbackChannel, proxies);
-        }
-        if (!html) return {};
-
-        const regex = /data-post="(?:locatorru|radarrussiia|radaryral)\/(\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\/div>/gis;
-        let posts = [];
-        let m;
-        while ((m = regex.exec(html)) !== null) {
-            posts.push({
-                id: parseInt(m[1]),
-                text: m[2].replace(/<[^>]*>/g, ' ').toLowerCase()
-            });
-        }
-        posts.sort((a,b) => a.id - b.id);
-        const fresh = posts.slice(-60);
-        console.log(`Постов получено: ${posts.length}, анализируем ${fresh.length}`);
-
-        const updates = {};
-
-        for (const post of fresh) {
-            let text = post.text.replace(/\s+/g, ' ').trim();
-            if (isGlobalClear(text)) {
-                console.log("Глобальный отбой! Сброс всех тревог.");
-                const allRegions = Object.keys(regionAliases);
-                for (let reg of allRegions) {
-                    if (!updates[reg]) updates[reg] = {};
-                    updates[reg].droneDanger = false;
-                    updates[reg].rocket = false;
-                }
-                continue;
-            }
-
-            let matched = [];
-            for (const [official, keys] of Object.entries(regionAliases)) {
-                if (keys.some(kw => text.includes(kw))) {
-                    matched.push(official);
-                }
-            }
-            if (matched.length === 0) continue;
-
-            const isRocket = /ракетная опасность|ракетная тревога|баллистическая ракета|крылатая ракета|авиационная ракетная опасность/i.test(text);
-            const isDroneDanger = /\bбпла?\b|беспилот|дрон|опасность по бпла|атака бпла/i.test(text);
-            
-            const isOtboyRocket = /отбой ракетной опасности|снята ракетная|ракетная опасность отбой/i.test(text);
-            const isOtboyDrone = /отбой опасности бпла|отбой бпла|бпла отбой|отбой по бпла/i.test(text);
-            const isGeneralOtboy = /отбой/i.test(text) && !isOtboyRocket && !isOtboyDrone;
-
-            for (const region of matched) {
-                if (!updates[region]) updates[region] = {};
-
-                if (isRocket) updates[region].rocket = true;
-                if (isDroneDanger) updates[region].droneDanger = true;
-
-                if (isOtboyRocket) updates[region].rocket = false;
-                if (isOtboyDrone) updates[region].droneDanger = false;
-                if (isGeneralOtboy) {
-                    updates[region].droneDanger = false;
-                    updates[region].rocket = false;
-                }
-            }
-        }
-
-        const newStates = { ...regionStates };
-        for (const [region, upd] of Object.entries(updates)) {
-            if (!newStates[region]) newStates[region] = { droneDanger: false, rocket: false };
-            if (upd.droneDanger !== undefined) newStates[region].droneDanger = upd.droneDanger;
-            if (upd.rocket !== undefined) newStates[region].rocket = upd.rocket;
-        }
-        console.log("Обновлённые состояния:", newStates);
-        return newStates;
-    }
-
-    // ===========================================
-    // ОБНОВЛЕНИЕ ПОЛИГОНОВ И ПАНЕЛИ
-    // ===========================================
-    function updateAlertList() {
-        const container = document.getElementById('drawerContent');
-        if (!container) return;
-        const activeRegions = [];
-        for (const [region, state] of Object.entries(regionStates)) {
-            const level = getCurrentLevel(state);
-            if (level > 0) {
-                activeRegions.push({ name: region, level, levelText: getLevelText(level) });
-            }
-        }
-        activeRegions.sort((a,b) => b.level - a.level);
-        if (activeRegions.length === 0) {
-            container.innerHTML = '<div class="empty-state">✅ Нет активных тревог</div>';
-            return;
-        }
-        let html = '';
-        activeRegions.forEach(r => {
-            let borderColor = getLevelColor(r.level);
-            html += `
-                <div class="region-item" style="border-left-color: ${borderColor};">
-                    <div class="region-name">${formatName(r.name)}</div>
-                    <div class="region-level">${r.levelText}</div>
-                </div>
-            `;
-        });
-        container.innerHTML = html;
-    }
-
-    function updatePolygons() {
-        if (!polygonsLayer) return;
-        polygonsLayer.eachLayer(layer => {
-            const name = layer.regionName;
-            if (name) {
-                const state = regionStates[name] || { droneDanger: false, rocket: false };
-                const level = getCurrentLevel(state);
-                let fill = colors.clear;
-                if (level === 2) fill = colors.droneDanger;
-                else if (level === 3) fill = colors.rocket;
-                layer.setStyle({ fillColor: fill, fillOpacity: 0.7 });
-                layer.getPopup().setContent(getPopupContent(name, level));
-            }
-        });
-    }
-
+    
     async function refreshAlerts() {
         const statusDiv = document.getElementById('status');
         statusDiv.innerHTML = '🔄 Обновление...';
         try {
-            const newStates = await parseTelegramAlerts();
-            let changed = false;
-            for (const [reg, newState] of Object.entries(newStates)) {
-                const oldState = regionStates[reg];
-                if (!oldState ||
-                    oldState.droneDanger !== newState.droneDanger ||
-                    oldState.rocket !== newState.rocket) {
-                    regionStates[reg] = { ...newState };
-                    changed = true;
+            let html = null;
+            try {
+                html = await fetchWithProxy("https://t.me/s/locatorru");
+            } catch(e) {
+                html = await fetchWithProxy("https://t.me/s/radarrussiia");
+            }
+            if (!html) throw new Error("Нет данных");
+            const regex = /data-post="(?:locatorru|radarrussiia)\/(\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\/div>/gis;
+            let posts = [];
+            let m;
+            while ((m = regex.exec(html)) !== null) {
+                posts.push({ id: parseInt(m[1]), text: m[2].replace(/<[^>]*>/g, ' ').toLowerCase() });
+            }
+            posts.sort((a,b) => b.id - a.id);
+            const fresh = posts.slice(0, 40);
+            const newStatus = JSON.parse(JSON.stringify(regionStatus));
+            for (let post of fresh) {
+                const text = post.text;
+                const isAll = /все регионы|по всей россии/i.test(text);
+                let matched = isAll ? allRegionNames : [];
+                if (!isAll) {
+                    for (const [official, keys] of Object.entries(regionAliases)) {
+                        if (keys.some(kw => text.includes(kw))) matched.push(official);
+                    }
+                }
+                if (matched.length === 0) continue;
+                const isOtboy = /отбой|снята/i.test(text);
+                const isRocket = /ракетная опасность|ракетная тревога/i.test(text);
+                const isDrone = /бпла|беспилот/i.test(text);
+                for (let reg of matched) {
+                    if (!newStatus[reg]) newStatus[reg] = { drone: false, rocket: false };
+                    if (isOtboy) {
+                        if (isRocket) newStatus[reg].rocket = false;
+                        else if (isDrone) newStatus[reg].drone = false;
+                        else { newStatus[reg].drone = false; newStatus[reg].rocket = false; }
+                    } else {
+                        if (isRocket) newStatus[reg].rocket = true;
+                        else if (isDrone) newStatus[reg].drone = true;
+                    }
                 }
             }
-            if (changed) {
-                updatePolygons();
-                updateAlertList();
-                localStorage.setItem("regionStates", JSON.stringify(regionStates));
-                statusDiv.innerHTML = '✅ Готово';
-                setTimeout(() => { if (statusDiv.innerHTML === '✅ Готово') statusDiv.innerHTML = 'Актуально'; }, 1500);
-            } else {
-                statusDiv.innerHTML = 'Без изменений';
-                setTimeout(() => { if (statusDiv.innerHTML === 'Без изменений') statusDiv.innerHTML = 'Актуально'; }, 1000);
-            }
+            regionStatus = newStatus;
+            updateAllPolygons();
+            localStorage.setItem("alertCache", JSON.stringify(regionStatus));
+            statusDiv.innerHTML = '✅ Готово';
+            setTimeout(() => statusDiv.innerHTML = 'Актуально', 1500);
         } catch(err) {
             console.error(err);
             statusDiv.innerHTML = '⚠️ Ошибка';
-            setTimeout(() => { if (statusDiv.innerHTML === '⚠️ Ошибка') statusDiv.innerHTML = 'Повторите'; }, 2000);
         }
     }
-
+    
     // ===========================================
-    // ЗАГРУЗКА ПОЛИГОНОВ (ГРАНИЦЫ)
+    // 7. ЗАГРУЗКА ГРАНИЦ РЕГИОНОВ (с учётом режима линейки)
     // ===========================================
     function loadPolygons() {
         const url = "https://raw.githubusercontent.com/azatkh/ru-regions-geojson/main/regions.geojson";
         const fallback = "https://raw.githubusercontent.com/codeforgermany/click_that_hood/main/public/data/russia.geojson";
-        fetch(url)
-            .then(res => res.ok ? res.json() : Promise.reject())
-            .then(data => applyPolygons(data))
-            .catch(() => fetch(fallback).then(res => res.json()).then(data => applyPolygons(data)).catch(e => console.warn("Границы не загружены", e)));
+        fetch(url).then(res => res.ok ? res.json() : Promise.reject())
+          .then(data => applyPolygons(data))
+          .catch(() => fetch(fallback).then(r => r.json()).then(applyPolygons));
     }
-
+    
     function applyPolygons(geoData) {
         if (polygonsLayer) map.removeLayer(polygonsLayer);
         polygonsLayer = L.geoJSON(geoData, {
             style: (feature) => {
-                let name = feature.properties?.name || feature.properties?.NAME || feature.properties?.admin_name || "";
-                const state = regionStates[name] || { droneDanger: false, rocket: false };
-                const level = getCurrentLevel(state);
-                let fill = colors.clear;
-                if (level === 2) fill = colors.droneDanger;
-                else if (level === 3) fill = colors.rocket;
-                return { color: "#fff", weight: 2.2, fillColor: fill, fillOpacity: 0.7, smoothFactor: 0.5 };
+                let name = feature.properties?.name || feature.properties?.NAME || "";
+                let d = false, r = false;
+                if (regionStatus[name]) { d = regionStatus[name].drone; r = regionStatus[name].rocket; }
+                let fillColor = colors.clear;
+                if (r) fillColor = colors.rocket;
+                else if (d) fillColor = colors.drone;
+                return { color: "#fff", weight: 2.2, fillColor, fillOpacity: 0.7 };
             },
             onEachFeature: (f, layer) => {
-                let name = f.properties?.name || f.properties?.NAME || f.properties?.admin_name || "";
+                let name = f.properties?.name || f.properties?.NAME || "";
                 if (name) {
                     layer.regionName = name;
-                    const state = regionStates[name] || { droneDanger: false, rocket: false };
-                    const level = getCurrentLevel(state);
-                    layer.bindPopup(getPopupContent(name, level), { className: 'custom-popup' });
+                    if (!regionStatus[name]) regionStatus[name] = { drone: false, rocket: false };
+                    const drone = regionStatus[name].drone;
+                    const rocket = regionStatus[name].rocket;
+                    layer.bindPopup(getPopupContent(name, drone, rocket), { className: 'custom-popup' });
                 }
             }
         }).addTo(map);
+        
+        // Настройка обработчиков кликов в зависимости от текущего режима линейки
+        if (rulerModeActive) {
+            // Если линейка активна – убираем все обработчики, чтобы клики доходили до карты
+            polygonsLayer.eachLayer(layer => {
+                layer.off('click');
+            });
+        } else {
+            // Если линейка не активна – вешаем открытие попапа
+            polygonsLayer.eachLayer(layer => {
+                layer.off('click');
+                layer.on('click', (e) => { e.target.openPopup(); });
+            });
+        }
         document.getElementById('status').innerHTML = 'Границы загружены';
-        setTimeout(() => map.invalidateSize(), 100);
-        updateAlertList();
+        updateAlertsPanel();
     }
-
+    
     // ===========================================
-    // УПРАВЛЕНИЕ ПАНЕЛЬЮ
+    // 8. ИНИЦИАЛИЗАЦИЯ И СОБЫТИЯ
     // ===========================================
-    function initDrawer() {
-        const drawer = document.getElementById('drawer');
-        const btnOpen = document.getElementById('drawerBtn');
-        const btnClose = document.getElementById('drawerClose');
-        btnOpen.addEventListener('click', () => drawer.classList.add('open'));
-        btnClose.addEventListener('click', () => drawer.classList.remove('open'));
-        document.addEventListener('click', (e) => {
-            if (drawer.classList.contains('open') && !drawer.contains(e.target) && !btnOpen.contains(e.target)) {
-                drawer.classList.remove('open');
-            }
-        });
+    const cached = localStorage.getItem("alertCache");
+    if (cached) {
+        try { regionStatus = JSON.parse(cached); } catch(e) {}
     }
-
-    // ===========================================
-    // ФОНОВОЕ ОБНОВЛЕНИЕ (улучшенное)
-    // ===========================================
-    function setupBackgroundUpdates() {
-        // Мгновенное обновление при возврате вкладки
-        document.addEventListener('visibilitychange', () => {
-            if (!document.hidden) {
-                refreshAlerts();
-                map.invalidateSize();
-            }
-        });
-        // Более частый интервал (20 секунд вместо 30, чтобы компенсировать замедление в фоне)
-        if (window._alertInterval) clearInterval(window._alertInterval);
-        window._alertInterval = setInterval(refreshAlerts, 20000);
-    }
-
-    // ===========================================
-    // СТАРТ
-    // ===========================================
-    const saved = localStorage.getItem("regionStates");
-    if (saved) {
-        try {
-            regionStates = JSON.parse(saved);
-        } catch(e) {}
-    }
-    refreshAlerts();
-    setupBackgroundUpdates();      // включает улучшенное фоновое обновление
     loadPolygons();
+    setTimeout(() => {
+        refreshAlerts();
+        setInterval(refreshAlerts, 35000);
+    }, 2000);
+    
     document.getElementById('updateBtn').addEventListener('click', () => refreshAlerts());
+    document.getElementById('rulerBtn').addEventListener('click', () => setRulerMode(!rulerModeActive));
+    document.getElementById('clearRulerBtn').addEventListener('click', () => clearRuler());
+    document.getElementById('threatType').addEventListener('change', () => updateRulerDisplay());
+    
+    // Панель списка тревог
+    const panel = document.getElementById('alertsPanel');
+    document.getElementById('openPanelBtn').addEventListener('click', () => panel.classList.add('open'));
+    document.getElementById('closePanelBtn').addEventListener('click', () => panel.classList.remove('open'));
+    document.addEventListener('click', (e) => {
+        if (panel.classList.contains('open') && !panel.contains(e.target) && e.target !== document.getElementById('openPanelBtn')) {
+            panel.classList.remove('open');
+        }
+    });
+    
     window.addEventListener('resize', () => map.invalidateSize());
     setTimeout(() => map.invalidateSize(), 200);
     map.on('zoomend', () => { if (map.getZoom() > 7) map.flyTo(map.getCenter(), map.getZoom(), { duration: 0.3 }); });
-    initDrawer();
 </script>
 </body>
 </html>
