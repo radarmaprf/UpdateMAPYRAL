@@ -154,40 +154,8 @@
     }
 
     // ===========================================
-    // ИНИЦИАЛИЗАЦИЯ СТАТУСОВ ДЛЯ ВСЕХ РЕГИОНОВ
+    // СБРОС ВСЕХ ТРЕВОГ ДЛЯ ВСЕХ РЕГИОНОВ (и drone, и rocket)
     // ===========================================
-    function initRegionStatus(regionNames) {
-        regionNames.forEach(name => {
-            if (!regionStatus[name]) {
-                regionStatus[name] = { drone: false, rocket: false };
-            }
-        });
-    }
-
-    // ===========================================
-    // ПРИМЕНЕНИЕ НОВЫХ ПРАВИЛ К СТАТУСАМ
-    // ===========================================
-    function applyAlert(regions, type, isCancel) {
-        // type: 'drone' или 'rocket'
-        // isCancel: true — отмена, false — объявление
-        regions.forEach(region => {
-            if (!regionStatus[region]) {
-                regionStatus[region] = { drone: false, rocket: false };
-            }
-            if (isCancel) {
-                // отмена конкретного типа
-                if (type === 'drone') regionStatus[region].drone = false;
-                if (type === 'rocket') regionStatus[region].rocket = false;
-            } else {
-                // объявление
-                if (type === 'drone') regionStatus[region].drone = true;
-                if (type === 'rocket') regionStatus[region].rocket = true;
-            }
-        });
-        updateAllPolygons();
-    }
-
-    // полный сброс всех тревог (всех типов) для всех регионов
     function resetAllAlerts() {
         for (let reg in regionStatus) {
             regionStatus[reg].drone = false;
@@ -196,11 +164,29 @@
         updateAllPolygons();
     }
 
-    // сброс только БПЛА для всех регионов
+    // ===========================================
+    // СБРОС ТОЛЬКО ДРОНОВ ДЛЯ ВСЕХ РЕГИОНОВ
+    // ===========================================
     function resetAllDrone() {
         for (let reg in regionStatus) {
             regionStatus[reg].drone = false;
         }
+        updateAllPolygons();
+    }
+
+    // ===========================================
+    // ПРИМЕНЕНИЕ ТРЕВОГИ К КОНКРЕТНЫМ РЕГИОНАМ
+    // ===========================================
+    function setAlert(regions, type, value) {
+        // type: 'drone' или 'rocket'
+        // value: true (установить) или false (снять)
+        regions.forEach(region => {
+            if (!regionStatus[region]) {
+                regionStatus[region] = { drone: false, rocket: false };
+            }
+            if (type === 'drone') regionStatus[region].drone = value;
+            if (type === 'rocket') regionStatus[region].rocket = value;
+        });
         updateAllPolygons();
     }
 
@@ -324,7 +310,7 @@
             });
         }
         posts.sort((a,b) => b.id - a.id);
-        const fresh = posts.slice(0, 40); // берём 40 последних сообщений
+        const fresh = posts.slice(0, 40);
         console.log(`Постов получено: ${posts.length}, анализируем ${fresh.length}`);
         return fresh;
     }
@@ -338,73 +324,85 @@
         try {
             const posts = await parseTelegramAlerts();
             
-            // Временный объект для накопления изменений
-            // Будем применять последовательно в порядке возрастания id (старые -> новые)
-            // чтобы соблюсти приоритет более свежих сообщений
-            for (const post of posts) {
+            // Проходим по сообщениям в хронологическом порядке (свежие в начале массива, но мы обрабатываем в порядке возрастания id - от старых к новым, чтобы новое перезаписывало старое)
+            const sortedPosts = [...posts].sort((a,b) => a.id - b.id);
+            
+            for (const post of sortedPosts) {
                 let text = post.text.replace(/\s+/g, ' ').trim();
                 
-                // Определяем, какие регионы упомянуты
+                // Определяем, есть ли указание "по всем регионам"
+                const isAllRegions = /все регионы|по всей россии|по всем регионам|всех регионах|везде/i.test(text);
+                
+                // Определяем регионы (если не все)
                 let matchedRegions = [];
-                for (const [official, keys] of Object.entries(regionAliases)) {
-                    if (keys.some(kw => text.includes(kw))) {
-                        matchedRegions.push(official);
+                if (!isAllRegions) {
+                    for (const [official, keys] of Object.entries(regionAliases)) {
+                        if (keys.some(kw => text.includes(kw))) {
+                            matchedRegions.push(official);
+                        }
                     }
                 }
                 
-                // Проверяем, есть ли указание "по всем регионам" или "все регионы"
-                const isAllRegions = /все регионы|по всей россии|по всем регионам|всех регионах|везде/i.test(text);
-                let targetRegions = [];
-                if (isAllRegions) {
-                    targetRegions = allRegionNames;
-                } else if (matchedRegions.length > 0) {
-                    targetRegions = matchedRegions;
-                } else {
-                    continue; // не указаны регионы — игнорируем сообщение
-                }
+                const targetRegions = isAllRegions ? allRegionNames : matchedRegions;
+                if (targetRegions.length === 0) continue;
                 
                 // Определяем тип события
                 const isOtboy = /отбой|снята|завершена|отменена|нет угрозы|угроза снята/i.test(text);
                 const isRocket = /ракетная опасность|ракетная тревога|баллистическая ракета|крылатая ракета|ракетная угроза/i.test(text);
                 const isDrone = /бпла|беспилот|дрон|опасность бпла|атака бпла|угроза бпла/i.test(text);
                 
-                // Общий отбой (без уточнения типа) — сбрасываем всё для указанных регионов
-                if (isOtboy && !isRocket && !isDrone) {
-                    // отбой всего
-                    for (let reg of targetRegions) {
+                // === ГЛАВНОЕ ПРАВИЛО: если есть "отбой" и "все регионы" — сбрасываем ВСЁ (и ракеты, и дроны) для всех регионов ===
+                if (isOtboy && isAllRegions) {
+                    // Полный сброс всех тревог для всех регионов
+                    for (let reg of allRegionNames) {
                         if (!regionStatus[reg]) regionStatus[reg] = { drone: false, rocket: false };
                         regionStatus[reg].drone = false;
                         regionStatus[reg].rocket = false;
                     }
+                    updateAllPolygons();
+                    continue; // это сообщение обработано, идём дальше
                 }
-                // Отбой именно ракетной опасности
-                else if (isOtboy && isRocket) {
-                    for (let reg of targetRegions) {
-                        if (!regionStatus[reg]) regionStatus[reg] = { drone: false, rocket: false };
-                        regionStatus[reg].rocket = false;
+                
+                // Если не глобальный отбой, обрабатываем как обычно
+                if (isOtboy) {
+                    // Отбой для указанных регионов (если нет уточнения типа — сбрасываем всё для этих регионов)
+                    if (!isRocket && !isDrone) {
+                        // отбой всего для конкретных регионов
+                        for (let reg of targetRegions) {
+                            if (!regionStatus[reg]) regionStatus[reg] = { drone: false, rocket: false };
+                            regionStatus[reg].drone = false;
+                            regionStatus[reg].rocket = false;
+                        }
+                    } else if (isRocket) {
+                        // отбой именно ракетной опасности
+                        for (let reg of targetRegions) {
+                            if (!regionStatus[reg]) regionStatus[reg] = { drone: false, rocket: false };
+                            regionStatus[reg].rocket = false;
+                        }
+                    } else if (isDrone) {
+                        // отбой именно опасности БПЛА
+                        for (let reg of targetRegions) {
+                            if (!regionStatus[reg]) regionStatus[reg] = { drone: false, rocket: false };
+                            regionStatus[reg].drone = false;
+                        }
                     }
-                }
-                // Отбой именно опасности БПЛА
-                else if (isOtboy && isDrone) {
-                    for (let reg of targetRegions) {
-                        if (!regionStatus[reg]) regionStatus[reg] = { drone: false, rocket: false };
-                        regionStatus[reg].drone = false;
-                    }
-                }
-                // Объявление ракетной опасности
-                else if (isRocket && !isOtboy) {
-                    for (let reg of targetRegions) {
-                        if (!regionStatus[reg]) regionStatus[reg] = { drone: false, rocket: false };
-                        regionStatus[reg].rocket = true;
-                        // НЕ сбрасываем drone
-                    }
-                }
-                // Объявление опасности БПЛА
-                else if (isDrone && !isOtboy) {
-                    for (let reg of targetRegions) {
-                        if (!regionStatus[reg]) regionStatus[reg] = { drone: false, rocket: false };
-                        regionStatus[reg].drone = true;
-                        // НЕ трогаем rocket
+                } 
+                else {
+                    // Объявление тревоги (не отбой)
+                    if (isRocket) {
+                        // ракетная опасность
+                        for (let reg of targetRegions) {
+                            if (!regionStatus[reg]) regionStatus[reg] = { drone: false, rocket: false };
+                            regionStatus[reg].rocket = true;
+                            // НЕ сбрасываем drone
+                        }
+                    } else if (isDrone) {
+                        // опасность БПЛА
+                        for (let reg of targetRegions) {
+                            if (!regionStatus[reg]) regionStatus[reg] = { drone: false, rocket: false };
+                            regionStatus[reg].drone = true;
+                            // НЕ трогаем rocket
+                        }
                     }
                 }
             }
@@ -488,9 +486,9 @@
         } catch(e) {}
     }
     
-    loadPolygons();       // загружаем границы, после чего станут доступны все регионы
+    loadPolygons();       // загружаем границы
     setTimeout(() => {
-        refreshAlerts();  // первый парсинг через секунду после загрузки карты
+        refreshAlerts();  // первый парсинг через секунду
         setInterval(refreshAlerts, 30000);
     }, 2000);
     
