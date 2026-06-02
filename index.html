@@ -157,7 +157,6 @@
 </div>
 <div class="legend">
     <div class="legend-item"><div class="legend-color" style="background: #6c757d;"></div> <span>⚪ Отбой / Спокойно</span></div>
-    <div class="legend-item"><div class="legend-color" style="background: #2ecc71;"></div> <span>🟢 Внимание</span></div>
     <div class="legend-item"><div class="legend-color" style="background: #ffc107;"></div> <span>🟡 Опасность БПЛА</span></div>
     <div class="legend-item"><div class="legend-color" style="background: #dc3545;"></div> <span>🔴 Ракетная опасность</span></div>
 </div>
@@ -177,11 +176,10 @@
     }).addTo(map);
 
     // ===========================================
-    // ЦВЕТА (без кругов, только полигоны)
+    // ЦВЕТА (только отбой, БПЛА, ракетная)
     // ===========================================
     const colors = {
         clear: "#6c757d",          // серый
-        attention: "#2ecc71",      // зелёный
         droneDanger: "#ffc107",    // жёлтый
         rocket: "#dc3545"          // красный
     };
@@ -223,25 +221,22 @@
     setInterval(updateOnlineCounter, 15000);
 
     // ===========================================
-    // ЛОГИКА ТРЕВОГ
+    // ЛОГИКА ТРЕВОГ (без "внимание")
     // ===========================================
     function getCurrentLevel(state) {
         if (!state) return 0;
         if (state.rocket) return 3;
         if (state.droneDanger) return 2;
-        if (state.attention) return 1;
         return 0;
     }
 
     function getLevelText(level) {
-        if (level === 1) return "🟢 Внимание";
         if (level === 2) return "🟡 Опасность БПЛА";
         if (level === 3) return "🔴 Ракетная опасность";
         return "⚪ Отбой / Спокойно";
     }
 
     function getLevelColor(level) {
-        if (level === 1) return "#2ecc71";
         if (level === 2) return "#ffc107";
         if (level === 3) return "#dc3545";
         return "#adb5bd";
@@ -255,7 +250,7 @@
     }
 
     // ===========================================
-    // СИНОНИМЫ РЕГИОНОВ (полный список)
+    // СИНОНИМЫ РЕГИОНОВ
     // ===========================================
     const regionAliases = {
         "Московская область": ["московская область","подмосковье","мо обл","московской обл","московская обл","москва","мск"],
@@ -326,7 +321,7 @@
     };
 
     // ===========================================
-    // ПАРСИНГ TELEGRAM
+    // ПАРСИНГ TELEGRAM (без учёта "внимание")
     // ===========================================
     const proxies = [
         "https://api.allorigins.win/raw?url=",
@@ -398,7 +393,6 @@
                 const allRegions = Object.keys(regionAliases);
                 for (let reg of allRegions) {
                     if (!updates[reg]) updates[reg] = {};
-                    updates[reg].attention = false;
                     updates[reg].droneDanger = false;
                     updates[reg].rocket = false;
                 }
@@ -415,25 +409,20 @@
 
             const isRocket = /ракетная опасность|ракетная тревога|баллистическая ракета|крылатая ракета|авиационная ракетная опасность/i.test(text);
             const isDroneDanger = /\bбпла?\b|беспилот|дрон|опасность по бпла|атака бпла/i.test(text);
-            const isAttention = /внимание|угроза бпла|внимание! бпла/i.test(text);
             
             const isOtboyRocket = /отбой ракетной опасности|снята ракетная|ракетная опасность отбой/i.test(text);
             const isOtboyDrone = /отбой опасности бпла|отбой бпла|бпла отбой|отбой по бпла/i.test(text);
-            const isOtboyAttention = /отбой внимания|внимание отбой/i.test(text);
-            const isGeneralOtboy = /отбой/i.test(text) && !isOtboyRocket && !isOtboyDrone && !isOtboyAttention;
+            const isGeneralOtboy = /отбой/i.test(text) && !isOtboyRocket && !isOtboyDrone;
 
             for (const region of matched) {
                 if (!updates[region]) updates[region] = {};
 
                 if (isRocket) updates[region].rocket = true;
-                else if (isDroneDanger) updates[region].droneDanger = true;
-                else if (isAttention) updates[region].attention = true;
+                if (isDroneDanger) updates[region].droneDanger = true;
 
                 if (isOtboyRocket) updates[region].rocket = false;
                 if (isOtboyDrone) updates[region].droneDanger = false;
-                if (isOtboyAttention) updates[region].attention = false;
                 if (isGeneralOtboy) {
-                    updates[region].attention = false;
                     updates[region].droneDanger = false;
                     updates[region].rocket = false;
                 }
@@ -442,8 +431,7 @@
 
         const newStates = { ...regionStates };
         for (const [region, upd] of Object.entries(updates)) {
-            if (!newStates[region]) newStates[region] = { attention: false, droneDanger: false, rocket: false };
-            if (upd.attention !== undefined) newStates[region].attention = upd.attention;
+            if (!newStates[region]) newStates[region] = { droneDanger: false, rocket: false };
             if (upd.droneDanger !== undefined) newStates[region].droneDanger = upd.droneDanger;
             if (upd.rocket !== undefined) newStates[region].rocket = upd.rocket;
         }
@@ -487,11 +475,10 @@
         polygonsLayer.eachLayer(layer => {
             const name = layer.regionName;
             if (name) {
-                const state = regionStates[name] || { attention: false, droneDanger: false, rocket: false };
+                const state = regionStates[name] || { droneDanger: false, rocket: false };
                 const level = getCurrentLevel(state);
                 let fill = colors.clear;
-                if (level === 1) fill = colors.attention;
-                else if (level === 2) fill = colors.droneDanger;
+                if (level === 2) fill = colors.droneDanger;
                 else if (level === 3) fill = colors.rocket;
                 layer.setStyle({ fillColor: fill, fillOpacity: 0.7 });
                 layer.getPopup().setContent(getPopupContent(name, level));
@@ -508,7 +495,6 @@
             for (const [reg, newState] of Object.entries(newStates)) {
                 const oldState = regionStates[reg];
                 if (!oldState ||
-                    oldState.attention !== newState.attention ||
                     oldState.droneDanger !== newState.droneDanger ||
                     oldState.rocket !== newState.rocket) {
                     regionStates[reg] = { ...newState };
@@ -549,11 +535,10 @@
         polygonsLayer = L.geoJSON(geoData, {
             style: (feature) => {
                 let name = feature.properties?.name || feature.properties?.NAME || feature.properties?.admin_name || "";
-                const state = regionStates[name] || { attention: false, droneDanger: false, rocket: false };
+                const state = regionStates[name] || { droneDanger: false, rocket: false };
                 const level = getCurrentLevel(state);
                 let fill = colors.clear;
-                if (level === 1) fill = colors.attention;
-                else if (level === 2) fill = colors.droneDanger;
+                if (level === 2) fill = colors.droneDanger;
                 else if (level === 3) fill = colors.rocket;
                 return { color: "#fff", weight: 2.2, fillColor: fill, fillOpacity: 0.7, smoothFactor: 0.5 };
             },
@@ -561,7 +546,7 @@
                 let name = f.properties?.name || f.properties?.NAME || f.properties?.admin_name || "";
                 if (name) {
                     layer.regionName = name;
-                    const state = regionStates[name] || { attention: false, droneDanger: false, rocket: false };
+                    const state = regionStates[name] || { droneDanger: false, rocket: false };
                     const level = getCurrentLevel(state);
                     layer.bindPopup(getPopupContent(name, level), { className: 'custom-popup' });
                 }
