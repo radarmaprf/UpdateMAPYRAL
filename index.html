@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Air Alert Map — линейка угроз + глобальный отбой</title>
+    <title>Air Alert Map — линейка угроз</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -182,7 +182,7 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
     // ===========================================
-    // 0. РЕГИОНЫ, КОТОРЫЕ НИКОГДА НЕ ПОДСВЕЧИВАЮТСЯ
+    // 0. РЕГИОН, КОТОРЫЙ НИКОГДА НЕ ПОДСВЕЧИВАЕТСЯ
     // ===========================================
     const IGNORED_REGIONS = ["Архангельская область"];
     
@@ -190,7 +190,7 @@
     // 1. ОТОБРАЖАЕМЫЕ НАЗВАНИЯ (короткие, удобные для пользователя)
     // ===========================================
     const displayNames = {
-        "Чувашия": "Чувашская Республика",
+        "Чувашская Республика": "Чувашия",
         "Республика Татарстан": "Татарстан",
         "Республика Башкортостан": "Башкортостан",
         "Республика Дагестан": "Дагестан",
@@ -382,7 +382,7 @@
     }
     
     // ===========================================
-    // 5. ОБНОВЛЕНИЕ ПОЛИГОНОВ И ПАНЕЛИ
+    // 5. ОБНОВЛЕНИЕ ПОЛИГОНОВ
     // ===========================================
     function updateAllPolygons() {
         if (!polygonsLayer) return;
@@ -410,6 +410,9 @@
         updateAlertsPanel();
     }
     
+    // ===========================================
+    // 6. ПАНЕЛЬ СПИСКА ТРЕВОГ + КОПИРОВАНИЕ
+    // ===========================================
     function getActiveAlertsList() {
         const active = [];
         for (const [name, flags] of Object.entries(regionStatus)) {
@@ -475,20 +478,7 @@
     }
     
     // ===========================================
-    // 6. ГЛОБАЛЬНЫЙ ОТБОЙ (ФУНКЦИЯ)
-    // ===========================================
-    function globalClearAllAlerts() {
-        for (let reg in regionStatus) {
-            if (!IGNORED_REGIONS.includes(reg)) {
-                regionStatus[reg] = { drone: false, rocket: false };
-            }
-        }
-        updateAllPolygons();
-        console.log("🌍 Глобальный отбой: все тревоги сброшены");
-    }
-    
-    // ===========================================
-    // 7. ПАРСИНГ ТОЛЬКО locatorru
+    // 7. ПАРСИНГ TELEGRAM
     // ===========================================
     const regionAliases = {
         "Москва": ["москва","мск","город москва","московская область","подмосковье","мо обл","московской обл","московская обл"],
@@ -530,8 +520,8 @@
         "Республика Дагестан": ["дагестан","махачкала"],
         "Республика Башкортостан": ["башкортостан","уфа","республика башкортостан"],
         "Удмуртская Республика": ["удмуртия","ижевск"],
-        "Чувашия": ["Чувашская Республика","чебоксары"],
-        "Марий Эл": ["Республика Марий эл","йошкар-ола"],
+        "Чувашская Республика": ["чувашия","чебоксары"],
+        "Республика Марий Эл": ["марий эл","йошкар-ола"],
         "Республика Мордовия": ["мордовия","саранск"],
         "Кировская область": ["киров","кировская область"],
         "Ульяновская область": ["ульяновск","ульяновская область"],
@@ -576,47 +566,26 @@
         const statusDiv = document.getElementById('status');
         statusDiv.innerHTML = '🔄 Обновление...';
         try {
-            // Парсим ТОЛЬКО канал locatorru
-            const channel = "locatorru";
-            const html = await fetchWithProxy(`https://t.me/s/${channel}`);
-            if (!html) throw new Error("Нет данных с канала locatorru");
-            
-            // Регулярка только для locatorru
-            const regex = /data-post="locatorru\/(\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\/div>/gis;
+            let html = null;
+            try {
+                html = await fetchWithProxy("https://t.me/s/locatorru");
+            } catch(e) {
+                html = await fetchWithProxy("https://t.me/s/radarrussiia");
+            }
+            if (!html) throw new Error("Нет данных");
+            const regex = /data-post="(?:locatorru|radarrussiia)\/(\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\/div>/gis;
             let posts = [];
             let m;
             while ((m = regex.exec(html)) !== null) {
                 posts.push({ id: parseInt(m[1]), text: m[2].replace(/<[^>]*>/g, ' ').toLowerCase() });
             }
             posts.sort((a,b) => b.id - a.id);
-            const fresh = posts.slice(0, 50);
-            
-            let newStatus = JSON.parse(JSON.stringify(regionStatus));
-            
+            const fresh = posts.slice(0, 40);
+            const newStatus = JSON.parse(JSON.stringify(regionStatus));
             for (let post of fresh) {
                 const text = post.text;
+                if (/все регионы|по всей россии/i.test(text)) continue;
                 
-                // --- ГЛОБАЛЬНЫЙ ОТБОЙ (расширенные паттерны) ---
-                const globalClearPatterns = [
-                    /отбой.*(все регионы|во всех регионах|повсеместно|везде|всех регионов)/i,
-                    /отбой.*по всем ранее/i,
-                    /снята.*угроза.*по всем/i,
-                    /все тревоги сняты/i,
-                    /глобальный отбой/i
-                ];
-                let isGlobalClear = globalClearPatterns.some(pattern => pattern.test(text));
-                
-                if (isGlobalClear) {
-                    for (let reg in newStatus) {
-                        if (!IGNORED_REGIONS.includes(reg)) {
-                            newStatus[reg] = { drone: false, rocket: false };
-                        }
-                    }
-                    console.log("🌍 Глобальный отбой в сообщении:", text.substring(0, 100));
-                    continue;
-                }
-                
-                // --- ОБЫЧНАЯ ОБРАБОТКА РЕГИОНОВ ---
                 let matched = [];
                 for (const [official, keys] of Object.entries(regionAliases)) {
                     if (keys.some(kw => text.includes(kw))) matched.push(official);
@@ -626,7 +595,6 @@
                 const isOtboy = /отбой|снята/i.test(text);
                 const isRocket = /ракетная опасность|ракетная тревога/i.test(text);
                 const isDrone = /бпла|беспилот/i.test(text);
-                
                 for (let reg of matched) {
                     if (IGNORED_REGIONS.includes(reg)) continue;
                     if (!newStatus[reg]) newStatus[reg] = { drone: false, rocket: false };
@@ -640,7 +608,9 @@
                     }
                 }
             }
-            
+            for (let ignored of IGNORED_REGIONS) {
+                newStatus[ignored] = { drone: false, rocket: false };
+            }
             regionStatus = newStatus;
             updateAllPolygons();
             localStorage.setItem("alertCache", JSON.stringify(regionStatus));
