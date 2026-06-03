@@ -17,6 +17,104 @@
         }
         .time-main { font-size: 1.8rem; font-weight: 600; line-height: 1; }
         .date { font-size: 0.65rem; opacity: 0.7; margin-top: 4px; text-transform: uppercase; }
+        
+        /* Панель активных тревог */
+        .alerts-panel {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 2000;
+            background: rgba(10,14,26,0.9);
+            backdrop-filter: blur(8px);
+            border-radius: 16px;
+            border: 1px solid rgba(255,255,255,0.15);
+            min-width: 220px;
+            max-width: 300px;
+            overflow: hidden;
+            transition: all 0.2s ease;
+        }
+        .alerts-header {
+            padding: 10px 16px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: #e8eef2;
+            font-weight: bold;
+            font-size: 0.9rem;
+            background: rgba(0,0,0,0.3);
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .alerts-header:hover {
+            background: rgba(255,255,255,0.1);
+        }
+        .alerts-header span:first-child {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .toggle-icon {
+            font-size: 1rem;
+            transition: transform 0.2s;
+        }
+        .alerts-content {
+            max-height: 0;
+            overflow-y: auto;
+            transition: max-height 0.3s ease;
+            background: rgba(0,0,0,0.4);
+        }
+        .alerts-content.open {
+            max-height: 400px;
+            padding: 10px;
+        }
+        .alert-list {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            font-size: 0.8rem;
+        }
+        .alert-list li {
+            padding: 6px 8px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: #e8eef2;
+        }
+        .alert-list li:last-child {
+            border-bottom: none;
+        }
+        .alert-type {
+            font-size: 0.7rem;
+            padding: 2px 6px;
+            border-radius: 12px;
+            font-weight: bold;
+        }
+        .type-drone { background: #ffc107; color: #1a1a2e; }
+        .type-rocket { background: #dc3545; color: white; }
+        .copy-btn {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: #e8eef2;
+            padding: 4px 8px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.7rem;
+            margin-top: 8px;
+            width: 100%;
+            text-align: center;
+            transition: 0.2s;
+        }
+        .copy-btn:hover {
+            background: #28a745;
+        }
+        .empty-alerts {
+            text-align: center;
+            color: #aaa;
+            padding: 12px;
+            font-size: 0.75rem;
+        }
+        
         .legend {
             position: fixed; bottom: 20px; left: 20px; z-index: 2000;
             background: rgba(10,14,26,0.85); backdrop-filter: blur(8px);
@@ -48,9 +146,11 @@
         @media (max-width: 600px) {
             .time-main { font-size: 1.2rem; }
             .clock { padding: 4px 12px; top: 10px; right: 10px; }
+            .alerts-panel { top: 10px; left: 10px; max-width: 260px; }
+            .alerts-header { padding: 6px 12px; font-size: 0.8rem; }
             .legend { bottom: 10px; left: 10px; padding: 8px 12px; font-size: 0.65rem; }
             .legend-color { width: 20px; height: 14px; }
-            .update-btn { bottom: 10px; right: 10px; padding: 8px 16px; font-size: 0.85rem; }
+            .update-btn { bottom: 10px; right: 10px; padding: 6px 12px; font-size: 0.75rem; }
             .status { bottom: 10px; font-size: 0.6rem; }
         }
     </style>
@@ -61,6 +161,19 @@
     <div class="time-main" id="liveTime">--:--</div>
     <div class="date" id="liveDate">--</div>
 </div>
+
+<!-- Панель активных тревог -->
+<div class="alerts-panel" id="alertsPanel">
+    <div class="alerts-header" id="alertsHeader">
+        <span>⚠️ Активные тревоги</span>
+        <span class="toggle-icon" id="toggleIcon">▼</span>
+    </div>
+    <div class="alerts-content" id="alertsContent">
+        <div class="empty-alerts">Нет активных тревог</div>
+        <button class="copy-btn" id="copyAlertsBtn" style="display: none;">📋 Копировать список</button>
+    </div>
+</div>
+
 <div class="legend">
     <div class="legend-item"><div class="legend-color" style="background: #6c757d;"></div> <span>⚪ Отбой / Спокойно</span></div>
     <div class="legend-item"><div class="legend-color" style="background: #ffc107;"></div> <span>🟡 Опасность БПЛА</span></div>
@@ -82,21 +195,19 @@
     }).addTo(map);
 
     // ===========================================
-    // СОСТОЯНИЯ: для каждого региона храним два флага
-    // drone: bool, rocket: bool
+    // ЗАБЛОКИРОВАННЫЕ РЕГИОНЫ (НИКОГДА НЕ ПОДСВЕЧИВАЮТСЯ)
     // ===========================================
+    const FORCED_CLEAR_REGIONS = ["Санкт-Петербург", "Ленинградская область"];
+    
     let regionStatus = {}; // { "регион": { drone: false, rocket: false } }
     
-    // ===========================================
-    // ЦВЕТА: приоритет: rocket > drone > clear
-    // ===========================================
     const colors = {
-        clear: "#6c757d",   // серый
-        drone: "#ffc107",   // жёлтый
-        rocket: "#dc3545"   // красный
+        clear: "#6c757d",
+        drone: "#ffc107",
+        rocket: "#dc3545"
     };
     
-    let polygonsLayer = null;   // слой с границами регионов
+    let polygonsLayer = null;
 
     // ===========================================
     // ЧАСЫ
@@ -132,106 +243,140 @@
         return `<div style="font-family:'Segoe UI';min-width:140px;"><b style="font-size:1rem;">${formatted}</b><br><span style="color:${color}">${text}</span></div>`;
     }
 
-    // ===========================================
-    // ОБНОВЛЕНИЕ ВСЕХ ПОЛИГОНОВ (цвета и попапы)
-    // ===========================================
     function updateAllPolygons() {
         if (!polygonsLayer) return;
         polygonsLayer.eachLayer(layer => {
-            const name = layer.regionName;
+            let name = layer.regionName;
             if (name && regionStatus[name]) {
-                const drone = regionStatus[name].drone;
-                const rocket = regionStatus[name].rocket;
+                let drone = regionStatus[name].drone;
+                let rocket = regionStatus[name].rocket;
+                if (FORCED_CLEAR_REGIONS.includes(name)) {
+                    drone = false;
+                    rocket = false;
+                }
                 let fillColor = colors.clear;
                 if (rocket) fillColor = colors.rocket;
                 else if (drone) fillColor = colors.drone;
-                else fillColor = colors.clear;
                 
                 layer.setStyle({ fillColor: fillColor, fillOpacity: 0.7 });
                 layer.getPopup().setContent(getPopupContent(name, drone, rocket));
             }
         });
+        // Обновляем панель активных тревог
+        updateAlertsPanel();
     }
 
     // ===========================================
-    // СБРОС ВСЕХ ТРЕВОГ ДЛЯ ВСЕХ РЕГИОНОВ (и drone, и rocket)
+    // ПАНЕЛЬ АКТИВНЫХ ТРЕВОГ
     // ===========================================
-    function resetAllAlerts() {
-        for (let reg in regionStatus) {
-            regionStatus[reg].drone = false;
-            regionStatus[reg].rocket = false;
-        }
-        updateAllPolygons();
-    }
-
-    // ===========================================
-    // СБРОС ТОЛЬКО ДРОНОВ ДЛЯ ВСЕХ РЕГИОНОВ
-    // ===========================================
-    function resetAllDrone() {
-        for (let reg in regionStatus) {
-            regionStatus[reg].drone = false;
-        }
-        updateAllPolygons();
-    }
-
-    // ===========================================
-    // ПРИМЕНЕНИЕ ТРЕВОГИ К КОНКРЕТНЫМ РЕГИОНАМ
-    // ===========================================
-    function setAlert(regions, type, value) {
-        // type: 'drone' или 'rocket'
-        // value: true (установить) или false (снять)
-        regions.forEach(region => {
-            if (!regionStatus[region]) {
-                regionStatus[region] = { drone: false, rocket: false };
+    function updateAlertsPanel() {
+        const alertsList = [];
+        for (const [region, status] of Object.entries(regionStatus)) {
+            if (FORCED_CLEAR_REGIONS.includes(region)) continue;
+            if (status.rocket) {
+                alertsList.push({ region, type: 'rocket', label: '🔴 Ракетная опасность' });
+            } else if (status.drone) {
+                alertsList.push({ region, type: 'drone', label: '🟡 Опасность БПЛА' });
             }
-            if (type === 'drone') regionStatus[region].drone = value;
-            if (type === 'rocket') regionStatus[region].rocket = value;
-        });
-        updateAllPolygons();
+        }
+        
+        const contentDiv = document.getElementById('alertsContent');
+        const copyBtn = document.getElementById('copyAlertsBtn');
+        
+        if (alertsList.length === 0) {
+            contentDiv.innerHTML = `<div class="empty-alerts">✅ Нет активных тревог</div>`;
+            copyBtn.style.display = 'none';
+        } else {
+            let html = `<ul class="alert-list">`;
+            for (const alert of alertsList) {
+                const typeClass = alert.type === 'rocket' ? 'type-rocket' : 'type-drone';
+                const typeText = alert.type === 'rocket' ? 'Ракетная опасность' : 'Опасность БПЛА';
+                html += `<li>
+                            <span>${alert.region}</span>
+                            <span class="alert-type ${typeClass}">${typeText}</span>
+                         </li>`;
+            }
+            html += `</ul>`;
+            contentDiv.innerHTML = html;
+            copyBtn.style.display = 'block';
+            // Обновляем кнопку копирования, чтобы она работала
+            const newCopyBtn = document.getElementById('copyAlertsBtn');
+            if (newCopyBtn) {
+                newCopyBtn.onclick = () => copyAlertsList(alertsList);
+            }
+        }
+    }
+    
+    function copyAlertsList(alertsList) {
+        const text = alertsList.map(a => `${a.region}: ${a.label}`).join('\n');
+        navigator.clipboard.writeText(text).then(() => {
+            const btn = document.getElementById('copyAlertsBtn');
+            const originalText = btn.innerText;
+            btn.innerText = '✅ Скопировано!';
+            setTimeout(() => { btn.innerText = originalText; }, 1500);
+        }).catch(err => console.warn('Ошибка копирования:', err));
     }
 
+    // Сворачивание/разворачивание панели
+    let panelOpen = false;
+    const alertsHeader = document.getElementById('alertsHeader');
+    const alertsContent = document.getElementById('alertsContent');
+    const toggleIcon = document.getElementById('toggleIcon');
+    
+    alertsHeader.addEventListener('click', () => {
+        panelOpen = !panelOpen;
+        if (panelOpen) {
+            alertsContent.classList.add('open');
+            toggleIcon.innerHTML = '▲';
+        } else {
+            alertsContent.classList.remove('open');
+            toggleIcon.innerHTML = '▼';
+        }
+    });
+
     // ===========================================
-    // СИНОНИМЫ РЕГИОНОВ (полный список)
+    // СИНОНИМЫ РЕГИОНОВ
     // ===========================================
     const regionAliases = {
-        "Московская область": ["московская область","подмосковье","мо обл","московской обл","московская обл","москва","мск"],
-        "Санкт-Петербург": ["санкт-петербург","питер","спб","ленинград"],
-        "Ленинградская область": ["ленинградская область","ленобласть","ленинградской обл"],
-        "Белгородская область": ["белгород","белгородская область","белгородской обл"],
-        "Брянская область": ["брянск","брянская область","брянской обл"],
-        "Воронежская область": ["воронеж","воронежская область","воронежской обл"],
-        "Курская область": ["курск","курская область","курской обл"],
-        "Краснодарский край": ["краснодар","кубань","краснодарский край","краснодарского края"],
-        "Ростовская область": ["ростов","ростов-на-дону","ростовская область","ростовской обл"],
-        "Республика Татарстан": ["татарстан","казань","республика татарстан"],
-        "Республика Крым": ["крым","республика крым","крыму"],
-        "Калининградская область": ["калининград","калининградская область","калининградской обл"],
-        "Свердловская область": ["свердловская область","екатеринбург","свердловской обл"],
-        "Челябинская область": ["челябинск","челябинская область","челябинской обл"],
-        "Новосибирская область": ["новосибирск","новосибирская область","новосибирской обл"],
-        "Самарская область": ["самара","самарская область","самарской обл"],
-        "Нижегородская область": ["нижний новгород","нижегородская область","нижегородской обл"],
-        "Волгоградская область": ["волгоград","волгоградская область","волгоградской обл"],
-        "Саратовская область": ["саратов","саратовская область","саратовской обл"],
-        "Пермский край": ["пермь","пермский край","пермского края"],
-        "Омская область": ["омск","омская область","омской обл"],
-        "Томская область": ["томск","томская область","томской обл"],
+        "Москва": ["москва","мск","город москва","московская область","подмосковье"],
+        "Московская область": ["московская область","подмосковье","мо обл"],
+        "Санкт-Петербург": ["санкт-петербург","питер","спб"],
+        "Ленинградская область": ["ленинградская область","ленобласть","ленинградской обл","ленинградская обл"],
+        "Белгородская область": ["белгород","белгородская область"],
+        "Брянская область": ["брянск","брянская область","брянщина"],
+        "Воронежская область": ["воронеж","воронежская область"],
+        "Курская область": ["курск","курская область"],
+        "Краснодарский край": ["краснодар","кубань","краснодарский край"],
+        "Ростовская область": ["ростов","ростов-на-дону","ростовская область"],
+        "Республика Татарстан": ["татарстан","казань"],
+        "Республика Крым": ["крым","республика крым"],
+        "Калининградская область": ["калининград","калининградская область"],
+        "Свердловская область": ["свердловская область","екатеринбург"],
+        "Челябинская область": ["челябинск","челябинская область"],
+        "Новосибирская область": ["новосибирск","новосибирская область"],
+        "Самарская область": ["самара","самарская область"],
+        "Нижегородская область": ["нижний новгород","нижегородская область"],
+        "Волгоградская область": ["волгоград","волгоградская область"],
+        "Саратовская область": ["саратов","саратовская область"],
+        "Пермский край": ["пермь","пермский край"],
+        "Омская область": ["омск","омская область"],
+        "Томская область": ["томск","томская область"],
         "Кемеровская область": ["кемерово","кемеровская область","кузбасс"],
-        "Иркутская область": ["иркутск","иркутская область","иркутской обл"],
-        "Красноярский край": ["красноярск","красноярский край","красноярского края"],
-        "Алтайский край": ["барнаул","алтайский край","алтайского края"],
-        "Приморский край": ["владивосток","приморский край","приморья"],
+        "Иркутская область": ["иркутск","иркутская область"],
+        "Красноярский край": ["красноярск","красноярский край"],
+        "Алтайский край": ["барнаул","алтайский край"],
+        "Приморский край": ["владивосток","приморский край"],
         "Хабаровский край": ["хабаровск","хабаровский край"],
-        "Амурская область": ["амурская область","благовещенск","амурской обл"],
+        "Амурская область": ["амурская область","благовещенск"],
         "Архангельская область": ["архангельск","архангельская область"],
         "Мурманская область": ["мурманск","мурманская область"],
         "Республика Карелия": ["карелия","петрозаводск"],
         "Республика Коми": ["коми","сыктывкар"],
         "Ханты-Мансийский АО": ["хмао","ханты-мансийск","сургут"],
         "Ямало-Ненецкий АО": ["янао","ямал","новый уренгой"],
-        "Чеченская Республика": ["чечня","грозный","чеченская республика"],
+        "Чеченская Республика": ["чечня","грозный"],
         "Республика Дагестан": ["дагестан","махачкала"],
-        "Республика Башкортостан": ["башкортостан","уфа","республика башкортостан"],
+        "Республика Башкортостан": ["башкортостан","уфа"],
         "Удмуртская Республика": ["удмуртия","ижевск"],
         "Чувашская Республика": ["чувашия","чебоксары"],
         "Республика Марий Эл": ["марий эл","йошкар-ола"],
@@ -251,9 +396,9 @@
         "Орловская область": ["орел","орловская область"],
         "Липецкая область": ["липецк","липецкая область"],
         "Псковская область": ["псков","псковская область"],
-        "Новгородская область": ["новгород","великий новгород","новгородская область"],
+        "Новгородская область": ["новгород","великий новгород"],
         "Ярославская область": ["ярославль","ярославская область"],
-        "Забайкальский край": ["забайкалье","чита","забайкальский край"],
+        "Забайкальский край": ["забайкалье","чита"],
         "Камчатский край": ["камчатка","петропавловск-камчатский"],
         "Магаданская область": ["магадан","магаданская область"],
         "Сахалинская область": ["сахалин","южно-сахалинск"],
@@ -261,11 +406,10 @@
         "Чукотский АО": ["чукотка","анадырь"]
     };
     
-    // Получить список всех возможных регионов из алиасов
     const allRegionNames = Object.keys(regionAliases);
 
     // ===========================================
-    // ПАРСИНГ TELEGRAM (каналы locatorru / radarrussiia)
+    // ПАРСИНГ TELEGRAM
     // ===========================================
     const proxies = [
         "https://api.allorigins.win/raw?url=",
@@ -310,30 +454,38 @@
             });
         }
         posts.sort((a,b) => b.id - a.id);
-        const fresh = posts.slice(0, 40);
+        const fresh = posts.slice(0, 60);
         console.log(`Постов получено: ${posts.length}, анализируем ${fresh.length}`);
         return fresh;
     }
 
     // ===========================================
-    // ОБРАБОТКА СООБЩЕНИЙ И ПРИМЕНЕНИЕ ПРАВИЛ
+    // ОБРАБОТКА СООБЩЕНИЙ
     // ===========================================
     async function refreshAlerts() {
         const statusDiv = document.getElementById('status');
         statusDiv.innerHTML = '🔄 Обновление...';
         try {
             const posts = await parseTelegramAlerts();
-            
-            // Проходим по сообщениям в хронологическом порядке (свежие в начале массива, но мы обрабатываем в порядке возрастания id - от старых к новым, чтобы новое перезаписывало старое)
             const sortedPosts = [...posts].sort((a,b) => a.id - b.id);
             
             for (const post of sortedPosts) {
                 let text = post.text.replace(/\s+/g, ' ').trim();
                 
-                // Определяем, есть ли указание "по всем регионам"
-                const isAllRegions = /все регионы|по всей россии|по всем регионам|всех регионах|везде/i.test(text);
+                // Глобальный отбой (кроме заблокированных)
+                const isGlobalOtboy = /отбой по всей россии|отбой все регионы|снята угроза по всей россии|везде отбой|глобальный отбой/i.test(text);
+                if (isGlobalOtboy) {
+                    for (let reg of allRegionNames) {
+                        if (FORCED_CLEAR_REGIONS.includes(reg)) continue;
+                        if (!regionStatus[reg]) regionStatus[reg] = { drone: false, rocket: false };
+                        regionStatus[reg].drone = false;
+                        regionStatus[reg].rocket = false;
+                    }
+                    console.log("Глобальный отбой (кроме заблокированных).");
+                    continue;
+                }
                 
-                // Определяем регионы (если не все)
+                const isAllRegions = /все регионы|по всей россии|по всем регионам|всех регионах/i.test(text);
                 let matchedRegions = [];
                 if (!isAllRegions) {
                     for (const [official, keys] of Object.entries(regionAliases)) {
@@ -342,72 +494,42 @@
                         }
                     }
                 }
-                
-                const targetRegions = isAllRegions ? allRegionNames : matchedRegions;
+                let targetRegions = isAllRegions ? allRegionNames : matchedRegions;
+                targetRegions = targetRegions.filter(reg => !FORCED_CLEAR_REGIONS.includes(reg));
                 if (targetRegions.length === 0) continue;
                 
-                // Определяем тип события
                 const isOtboy = /отбой|снята|завершена|отменена|нет угрозы|угроза снята/i.test(text);
-                const isRocket = /ракетная опасность|ракетная тревога|баллистическая ракета|крылатая ракета|ракетная угроза/i.test(text);
+                const isRocket = /ракетная опасность|ракетная тревога|баллистическая ракета|крылатая ракета/i.test(text);
                 const isDrone = /бпла|беспилот|дрон|опасность бпла|атака бпла|угроза бпла/i.test(text);
                 
-                // === ГЛАВНОЕ ПРАВИЛО: если есть "отбой" и "все регионы" — сбрасываем ВСЁ (и ракеты, и дроны) для всех регионов ===
-                if (isOtboy && isAllRegions) {
-                    // Полный сброс всех тревог для всех регионов
-                    for (let reg of allRegionNames) {
-                        if (!regionStatus[reg]) regionStatus[reg] = { drone: false, rocket: false };
-                        regionStatus[reg].drone = false;
-                        regionStatus[reg].rocket = false;
-                    }
-                    updateAllPolygons();
-                    continue; // это сообщение обработано, идём дальше
-                }
-                
-                // Если не глобальный отбой, обрабатываем как обычно
                 if (isOtboy) {
-                    // Отбой для указанных регионов (если нет уточнения типа — сбрасываем всё для этих регионов)
-                    if (!isRocket && !isDrone) {
-                        // отбой всего для конкретных регионов
-                        for (let reg of targetRegions) {
-                            if (!regionStatus[reg]) regionStatus[reg] = { drone: false, rocket: false };
+                    for (let reg of targetRegions) {
+                        if (!regionStatus[reg]) regionStatus[reg] = { drone: false, rocket: false };
+                        if (isRocket) regionStatus[reg].rocket = false;
+                        else if (isDrone) regionStatus[reg].drone = false;
+                        else {
                             regionStatus[reg].drone = false;
                             regionStatus[reg].rocket = false;
-                        }
-                    } else if (isRocket) {
-                        // отбой именно ракетной опасности
-                        for (let reg of targetRegions) {
-                            if (!regionStatus[reg]) regionStatus[reg] = { drone: false, rocket: false };
-                            regionStatus[reg].rocket = false;
-                        }
-                    } else if (isDrone) {
-                        // отбой именно опасности БПЛА
-                        for (let reg of targetRegions) {
-                            if (!regionStatus[reg]) regionStatus[reg] = { drone: false, rocket: false };
-                            regionStatus[reg].drone = false;
                         }
                     }
+                    console.log(`Отбой для:`, targetRegions);
                 } 
-                else {
-                    // Объявление тревоги (не отбой)
-                    if (isRocket) {
-                        // ракетная опасность
-                        for (let reg of targetRegions) {
-                            if (!regionStatus[reg]) regionStatus[reg] = { drone: false, rocket: false };
-                            regionStatus[reg].rocket = true;
-                            // НЕ сбрасываем drone
-                        }
-                    } else if (isDrone) {
-                        // опасность БПЛА
-                        for (let reg of targetRegions) {
-                            if (!regionStatus[reg]) regionStatus[reg] = { drone: false, rocket: false };
-                            regionStatus[reg].drone = true;
-                            // НЕ трогаем rocket
-                        }
+                else if (isRocket) {
+                    for (let reg of targetRegions) {
+                        if (!regionStatus[reg]) regionStatus[reg] = { drone: false, rocket: false };
+                        regionStatus[reg].rocket = true;
                     }
+                    console.log(`Ракетная опасность для:`, targetRegions);
+                } 
+                else if (isDrone) {
+                    for (let reg of targetRegions) {
+                        if (!regionStatus[reg]) regionStatus[reg] = { drone: false, rocket: false };
+                        regionStatus[reg].drone = true;
+                    }
+                    console.log(`Опасность БПЛА для:`, targetRegions);
                 }
             }
             
-            // После обработки всех сообщений обновляем карту
             updateAllPolygons();
             localStorage.setItem("alertCache", JSON.stringify(regionStatus));
             statusDiv.innerHTML = '✅ Готово';
@@ -420,7 +542,7 @@
     }
 
     // ===========================================
-    // ЗАГРУЗКА ГРАНИЦ РЕГИОНОВ (полигоны)
+    // ЗАГРУЗКА ГРАНИЦ РЕГИОНОВ
     // ===========================================
     function loadPolygons() {
         const url = "https://raw.githubusercontent.com/azatkh/ru-regions-geojson/main/regions.geojson";
@@ -436,22 +558,39 @@
         polygonsLayer = L.geoJSON(geoData, {
             style: (feature) => {
                 let name = feature.properties?.name || feature.properties?.NAME || feature.properties?.admin_name || "";
+                if (name && (name.includes("Санкт-Петербург") || name === "Санкт-Петербург")) name = "Санкт-Петербург";
+                if (name && (name.includes("Ленинградская область") || name === "Ленинградская область")) name = "Ленинградская область";
+                if (name && name.includes("Московская")) name = "Московская область";
+                if (name && (name.includes("Москва") && !name.includes("область"))) name = "Москва";
+                
                 let drone = false, rocket = false;
                 if (regionStatus[name]) {
                     drone = regionStatus[name].drone;
                     rocket = regionStatus[name].rocket;
                 }
+                if (FORCED_CLEAR_REGIONS.includes(name)) {
+                    drone = false;
+                    rocket = false;
+                }
                 let fillColor = colors.clear;
                 if (rocket) fillColor = colors.rocket;
                 else if (drone) fillColor = colors.drone;
-                else fillColor = colors.clear;
                 return { color: "#fff", weight: 2.2, fillColor: fillColor, fillOpacity: 0.7, smoothFactor: 0.5 };
             },
             onEachFeature: (f, layer) => {
                 let name = f.properties?.name || f.properties?.NAME || f.properties?.admin_name || "";
                 if (name) {
+                    if (name.includes("Санкт-Петербург") || name === "Санкт-Петербург") name = "Санкт-Петербург";
+                    if (name.includes("Ленинградская область") || name === "Ленинградская область") name = "Ленинградская область";
+                    if (name.includes("Московская")) name = "Московская область";
+                    if (name && (name.includes("Москва") && !name.includes("область"))) name = "Москва";
+                    
                     layer.regionName = name;
                     if (!regionStatus[name]) regionStatus[name] = { drone: false, rocket: false };
+                    if (FORCED_CLEAR_REGIONS.includes(name)) {
+                        regionStatus[name].drone = false;
+                        regionStatus[name].rocket = false;
+                    }
                     const drone = regionStatus[name].drone;
                     const rocket = regionStatus[name].rocket;
                     layer.bindPopup(getPopupContent(name, drone, rocket), { className: 'custom-popup' });
@@ -459,7 +598,6 @@
             }
         }).addTo(map);
         
-        // Инициализируем статусы для всех регионов из геоданных
         polygonsLayer.eachLayer(layer => {
             if (layer.regionName && !regionStatus[layer.regionName]) {
                 regionStatus[layer.regionName] = { drone: false, rocket: false };
@@ -473,22 +611,25 @@
     // ===========================================
     // СТАРТ
     // ===========================================
-    // Восстанавливаем кэш
     const cached = localStorage.getItem("alertCache");
     if (cached) {
         try {
             const saved = JSON.parse(cached);
             for (let reg in saved) {
+                if (FORCED_CLEAR_REGIONS.includes(reg)) continue;
                 if (!regionStatus[reg]) regionStatus[reg] = { drone: false, rocket: false };
                 regionStatus[reg].drone = saved[reg].drone || false;
                 regionStatus[reg].rocket = saved[reg].rocket || false;
             }
         } catch(e) {}
     }
+    for (let reg of FORCED_CLEAR_REGIONS) {
+        regionStatus[reg] = { drone: false, rocket: false };
+    }
     
-    loadPolygons();       // загружаем границы
+    loadPolygons();
     setTimeout(() => {
-        refreshAlerts();  // первый парсинг через секунду
+        refreshAlerts();
         setInterval(refreshAlerts, 30000);
     }, 2000);
     
