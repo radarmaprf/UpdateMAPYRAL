@@ -63,7 +63,6 @@
 <div class="legend">
     <div class="legend-item"><div class="legend-color" style="background: #6c757d;"></div> <span>⚪ Отбой / Спокойно</span></div>
     <div class="legend-item"><div class="legend-color" style="background: #ffc107;"></div> <span>🟡 Опасность БПЛА</span></div>
-    <div class="legend-item"><div class="legend-color" style="background: #dc3545;"></div> <span>🔴 Внимание по БПЛА</span></div>
     <div class="legend-item"><div class="legend-color" style="background: #800020;"></div> <span>🏴‍☠️ Ракетная опасность</span></div>
 </div>
 <button class="update-btn" id="updateBtn">🔄 Обновить</button>
@@ -82,13 +81,12 @@
     }).addTo(map);
 
     // ===========================================
-    // 2. ЦВЕТА
+    // 2. ЦВЕТА (3 уровня)
     // ===========================================
     const colors = {
-        clear: "#6c757d",
-        danger: "#ffc107",
-        attention: "#dc3545",
-        rocket: "#800020"
+        clear: "#6c757d",   // отбой
+        danger: "#ffc107",  // опасность БПЛА
+        rocket: "#800020"   // ракетная опасность
     };
     let currentLevels = {};
     let circlesLayer = null;
@@ -141,7 +139,6 @@
         let text = "", color = "";
         if (level === 0) { text = "⚪ Отбой / Спокойно"; color = "#adb5bd"; }
         else if (level === 1) { text = "🟡 Опасность БПЛА"; color = "#ffc107"; }
-        else if (level === 2) { text = "🔴 Внимание! Угроза БПЛА"; color = "#ff8888"; }
         else { text = "💀 РАКЕТНАЯ ОПАСНОСТЬ! Укрытие!"; color = "#c41e3a"; }
         return `<div style="font-family:'Segoe UI';min-width:140px;"><b style="font-size:1rem;">${formatted}</b><br><span style="color:${color}">${text}</span></div>`;
     }
@@ -152,7 +149,6 @@
             const level = currentLevels[r.name] || 0;
             let fill = colors.clear;
             if (level === 1) fill = colors.danger;
-            else if (level === 2) fill = colors.attention;
             else if (level === 3) fill = colors.rocket;
             const circle = L.circle([r.lat, r.lng], {
                 radius: 85000, color: "#fff", weight: 2.2,
@@ -173,7 +169,6 @@
                 const level = currentLevels[reg.name] || 0;
                 let fill = colors.clear;
                 if (level === 1) fill = colors.danger;
-                else if (level === 2) fill = colors.attention;
                 else if (level === 3) fill = colors.rocket;
                 circle.setStyle({ fillColor: fill });
                 circle.getPopup().setContent(getPopupContent(reg.name, level));
@@ -263,7 +258,7 @@
         "https://thingproxy.freeboard.io/fetch/"
     ];
     const channel = "https://t.me/s/locatorru";
-    const fallbackChannel = "https://t.me/s/radarrussiia";  // на случай проблем
+    const fallbackChannel = "https://t.me/s/radarrussiia";
 
     async function fetchWithProxy(url, proxyList) {
         for (let proxy of proxyList) {
@@ -289,7 +284,6 @@
         }
         if (!html) return {};
 
-        // Извлекаем посты: поддерживаем locatorru, radarrussiia, radaryral
         const regex = /data-post="(?:locatorru|radarrussiia|radaryral)\/(\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\/div>/gis;
         let posts = [];
         let m;
@@ -317,13 +311,12 @@
             let level = null;
             const isOtboy = /отбой|снята|завершена|отменена|нет угрозы|угроза снята/i.test(text);
             const isRocket = /ракетная опасность|ракетная тревога|баллистическая ракета|крылатая ракета|авиационная ракетная опасность/i.test(text);
-            const isAttention = /внимание по бпла|угроза бпла|внимание! бпла|бпла.*внимание/i.test(text);
-            const isDanger = /\bбпла?\b|беспилот|дрон|опасность по бпла|атака бпла/i.test(text);
+            // Внимание по БПЛА и обычная опасность БПЛА теперь объединены в один уровень 1
+            const isAnyDrone = /\bбпла?\b|беспилот|дрон|опасность по бпла|атака бпла|внимание по бпла|угроза бпла/i.test(text);
 
             if (isOtboy) level = 0;
             else if (isRocket) level = 3;
-            else if (isAttention) level = 2;
-            else if (isDanger) level = 1;
+            else if (isAnyDrone) level = 1;
 
             if (level === null) continue;
 
@@ -396,7 +389,6 @@
                 const lvl = currentLevels[name] || 0;
                 let fill = colors.clear;
                 if (lvl === 1) fill = colors.danger;
-                else if (lvl === 2) fill = colors.attention;
                 else if (lvl === 3) fill = colors.rocket;
                 return { color: "#fff", weight: 2.2, fillColor: fill, fillOpacity: 0.7, smoothFactor: 0.5 };
             },
@@ -423,7 +415,6 @@
                 const lvl = currentLevels[name] || 0;
                 let fill = colors.clear;
                 if (lvl === 1) fill = colors.danger;
-                else if (lvl === 2) fill = colors.attention;
                 else if (lvl === 3) fill = colors.rocket;
                 layer.setStyle({ fillColor: fill, fillOpacity: 0.7 });
                 layer.getPopup().setContent(getPopupContent(name, lvl));
