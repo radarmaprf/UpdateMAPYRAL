@@ -147,26 +147,18 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
     // ===========================================
-    // 1. КАРТА
+    // КАРТА
     // ===========================================
     const map = L.map('map').setView([61, 95], 4.2);
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
         attribution: '', subdomains: 'abcd', maxZoom: 10, minZoom: 2
     }).addTo(map);
 
-    // ===========================================
-    // 2. ЦВЕТА (только БПЛА и отбой)
-    // ===========================================
-    const colors = {
-        clear: "#6c757d",
-        drone: "#ffc107"
-    };
-    
-    // Храним только флаг БПЛА для каждого региона
-    let droneAlerts = {}; // true = опасность БПЛА, false/отсутствует = отбой
+    const colors = { clear: "#6c757d", drone: "#ffc107" };
+    let droneAlerts = {}; // true = опасность, false = отбой
 
     // ===========================================
-    // 3. ЧАСЫ
+    // ЧАСЫ
     // ===========================================
     function updateClock() {
         const now = new Date();
@@ -192,9 +184,7 @@
         }
     }
 
-    // ===========================================
-    // 4. КРУГИ ДЛЯ БЫСТРОГО СТАРТА
-    // ===========================================
+    // Быстрые круги
     const quickRegions = [
         { name:"Москва", lat:55.7558, lng:37.6173 },
         { name:"Московская область", lat:55.7558, lng:37.6173 },
@@ -213,7 +203,55 @@
         { name:"Челябинская область", lat:55.15, lng:61.4 },
         { name:"Новосибирская область", lat:55.03, lng:82.92 },
         { name:"Самарская область", lat:53.2, lng:50.15 },
-        { name:"Нижегородская область", lat:56.33, lng:44.0 }
+        { name:"Нижегородская область", lat:56.33, lng:44.0 },
+        { name:"Волгоградская область", lat:48.71, lng:44.52 },
+        { name:"Саратовская область", lat:51.53, lng:46.03 },
+        { name:"Пермский край", lat:58.01, lng:56.23 },
+        { name:"Омская область", lat:54.98, lng:73.4 },
+        { name:"Томская область", lat:56.5, lng:84.97 },
+        { name:"Кемеровская область", lat:55.36, lng:86.08 },
+        { name:"Иркутская область", lat:52.28, lng:104.3 },
+        { name:"Красноярский край", lat:56.01, lng:92.85 },
+        { name:"Алтайский край", lat:53.35, lng:83.77 },
+        { name:"Приморский край", lat:43.12, lng:131.9 },
+        { name:"Хабаровский край", lat:48.48, lng:135.08 },
+        { name:"Амурская область", lat:50.26, lng:127.53 },
+        { name:"Архангельская область", lat:64.55, lng:40.53 },
+        { name:"Мурманская область", lat:68.97, lng:33.08 },
+        { name:"Республика Карелия", lat:63.0, lng:34.0 },
+        { name:"Республика Коми", lat:64.0, lng:54.0 },
+        { name:"Ханты-Мансийский АО", lat:61.0, lng:69.0 },
+        { name:"Ямало-Ненецкий АО", lat:66.0, lng:76.0 },
+        { name:"Чеченская Республика", lat:43.32, lng:45.69 },
+        { name:"Республика Дагестан", lat:42.98, lng:47.5 },
+        { name:"Республика Башкортостан", lat:54.73, lng:55.96 },
+        { name:"Удмуртская Республика", lat:56.85, lng:53.2 },
+        { name:"Чувашская Республика", lat:55.56, lng:47.25 },
+        { name:"Республика Марий Эл", lat:56.63, lng:47.9 },
+        { name:"Республика Мордовия", lat:54.23, lng:45.18 },
+        { name:"Кировская область", lat:58.6, lng:49.66 },
+        { name:"Ульяновская область", lat:54.32, lng:48.4 },
+        { name:"Пензенская область", lat:53.2, lng:45.0 },
+        { name:"Тамбовская область", lat:52.72, lng:41.43 },
+        { name:"Рязанская область", lat:54.63, lng:39.72 },
+        { name:"Тульская область", lat:54.2, lng:37.62 },
+        { name:"Калужская область", lat:54.51, lng:36.27 },
+        { name:"Смоленская область", lat:54.78, lng:32.05 },
+        { name:"Тверская область", lat:56.86, lng:35.9 },
+        { name:"Владимирская область", lat:56.12, lng:40.4 },
+        { name:"Ивановская область", lat:57.0, lng:41.0 },
+        { name:"Костромская область", lat:57.77, lng:40.93 },
+        { name:"Орловская область", lat:52.97, lng:36.07 },
+        { name:"Липецкая область", lat:52.6, lng:39.57 },
+        { name:"Псковская область", lat:57.82, lng:28.33 },
+        { name:"Новгородская область", lat:58.52, lng:31.27 },
+        { name:"Ярославская область", lat:57.63, lng:39.87 },
+        { name:"Забайкальский край", lat:52.0, lng:113.5 },
+        { name:"Камчатский край", lat:53.02, lng:158.65 },
+        { name:"Магаданская область", lat:59.57, lng:150.8 },
+        { name:"Сахалинская область", lat:50.55, lng:142.95 },
+        { name:"Еврейская АО", lat:48.5, lng:132.0 },
+        { name:"Чукотский АО", lat:66.0, lng:177.0 }
     ];
 
     let circlesLayer = null;
@@ -247,7 +285,7 @@
     }
 
     // ===========================================
-    // 5. РЕГИОНЫ (синонимы)
+    // РЕГИОНЫ (синонимы)
     // ===========================================
     const regionAliases = {
         "Москва": ["москва","мск","г москва","город москва"],
@@ -319,7 +357,7 @@
     };
 
     // ===========================================
-    // 6. ПАРСИНГ TELEGRAM (только БПЛА)
+    // ПАРСИНГ TELEGRAM (ИСПРАВЛЕННЫЙ ПРИОРИТЕТ ОТБОЯ)
     // ===========================================
     const proxies = [
         "https://api.allorigins.win/raw?url=",
@@ -364,14 +402,16 @@
             });
         }
         posts.sort((a,b) => b.id - a.id);
-        const fresh = posts.slice(0, 40);
+        const fresh = posts.slice(0, 50); // берём больше для надёжности
         console.log(`Постов получено: ${posts.length}, анализируем ${fresh.length}`);
 
-        // Временное хранение обновлений
-        const updates = {}; // { region: true/false/null }
+        // Временное хранилище: для каждого региона храним последнее действие (true/false)
+        const updates = {};
 
         for (const post of fresh) {
             let text = post.text.replace(/\s+/g, ' ').trim();
+            
+            // Определяем, какие регионы упомянуты
             let matched = [];
             for (const [official, keys] of Object.entries(regionAliases)) {
                 if (keys.some(kw => text.includes(kw))) {
@@ -380,72 +420,62 @@
             }
             if (matched.length === 0) continue;
 
-            // Определяем тип сообщения
-            // Отбой БПЛА
-            const isDroneOtboy = /отбой бпла|опасность бпла отменена|бпла отбой|беспилотная угроза снята|отбой опасности бпла|отбой угрозы/i.test(text);
-            // Отбой всего (общий)
-            const isFullOtboy = /отбой всего|все отбои|снята угроза полностью|угрозы нет|отбой тревоги/i.test(text);
+            // Распознаём команды
+            // Отбой БПЛА (приоритет 1)
+            const isDroneOtboy = /отбой бпла|опасность бпла отменена|бпла отбой|беспилотная угроза снята|отбой опасности бпла|отбой угрозы бпла|снята угроза бпла|отбой по бпла|отбой опасности по бпла/i.test(text);
+            // Общий отбой всего (все угрозы)
+            const isFullOtboy = /отбой всего|все отбои|снята угроза полностью|угрозы нет|отбой тревоги|ситуация нормализовалась/i.test(text);
             // Активация БПЛА
             const isDroneAlert = /\bбпла?\b|беспилот|дрон|опасность по бпла|атака бпла|внимание по бпла|угроза бпла/i.test(text);
 
-            // Игнорируем ракетные сообщения полностью
-            const isRocketRelated = /ракетная|баллистическ|крылат/i.test(text);
-            if (isRocketRelated && !isDroneAlert && !isDroneOtboy && !isFullOtboy) {
-                // Пропускаем чисто ракетные сообщения
-                continue;
-            }
+            // Игнорируем чисто ракетные сообщения (если нет признаков БПЛА)
+            const isRocketOnly = /ракетная|баллистическ|крылат/i.test(text) && !isDroneAlert && !isDroneOtboy && !isFullOtboy;
+            if (isRocketOnly) continue;
 
             for (const region of matched) {
-                if (!updates[region]) updates[region] = null;
-                
+                // Приоритет: сначала общий отбой, затем отбой БПЛА, затем тревога
                 if (isFullOtboy) {
-                    updates[region] = false;
+                    updates[region] = false;  // серый
                     continue;
                 }
                 if (isDroneOtboy) {
-                    updates[region] = false;
+                    updates[region] = false;  // серый
+                    continue;
                 }
                 if (isDroneAlert) {
-                    updates[region] = true;
+                    // Только если для этого региона ещё не было отбоя в этом цикле (более свежий)
+                    if (updates[region] !== false) {
+                        updates[region] = true;
+                    }
                 }
             }
         }
-        
-        // Применяем обновления
-        for (const [region, newState] of Object.entries(updates)) {
-            if (newState === null) continue;
-            if (newState === true) {
-                droneAlerts[region] = true;
-            } else {
-                droneAlerts[region] = false;
-            }
+
+        // Применяем обновления к глобальному состоянию
+        for (const [region, state] of Object.entries(updates)) {
+            droneAlerts[region] = state;
         }
         
-        // Возвращаем только регионы с активной тревогой (для отображения в панели)
+        // Возвращаем активные регионы для отображения в панели
         const result = {};
         for (const [region, active] of Object.entries(droneAlerts)) {
-            if (active === true) {
-                result[region] = 1;
-            }
+            if (active === true) result[region] = 1;
         }
-        console.log("Активные тревоги БПЛА:", result);
+        console.log("Активные тревоги после обработки:", result);
         return result;
     }
 
     // ===========================================
-    // 7. ОБНОВЛЕНИЕ ТРЕВОГ И ПАНЕЛИ
+    // ОБНОВЛЕНИЕ ПАНЕЛИ И КАРТЫ
     // ===========================================
     function updateAlertsPanel() {
         const container = document.getElementById('alertsList');
         if (!container) return;
-
         const activeRegions = Object.entries(droneAlerts).filter(([,active]) => active === true).map(([region]) => region);
-        
         if (activeRegions.length === 0) {
             container.innerHTML = '<div class="empty-alerts">✨ Нет активных тревог</div>';
             return;
         }
-
         container.innerHTML = activeRegions.map(region => `
             <div class="alert-card">
                 <div class="alert-region">${region}</div>
@@ -490,7 +520,7 @@
     }
 
     // ===========================================
-    // 8. ГРАНИЦЫ (фоном, опционально)
+    // ГРАНИЦЫ (опционально)
     // ===========================================
     let polygonsLayer = null;
     function loadPolygons() {
@@ -541,13 +571,7 @@
     }
 
     // ===========================================
-    // 9. УПРАВЛЕНИЕ ПАНЕЛЬЮ
-    // ===========================================
-    function openSidebar() { document.getElementById('alertsSidebar').classList.add('open'); }
-    function closeSidebar() { document.getElementById('alertsSidebar').classList.remove('open'); }
-
-    // ===========================================
-    // 10. СТАРТ
+    // ИНИЦИАЛИЗАЦИЯ
     // ===========================================
     circlesLayer = createCircles();
     circlesLayer.addTo(map);
@@ -566,8 +590,8 @@
     setInterval(refreshAlerts, 30000);
     setTimeout(() => loadPolygons(), 1000);
     document.getElementById('updateBtn').addEventListener('click', () => refreshAlerts());
-    document.getElementById('alertPanelBtn').addEventListener('click', openSidebar);
-    document.getElementById('closeSidebarBtn').addEventListener('click', closeSidebar);
+    document.getElementById('alertPanelBtn').addEventListener('click', () => document.getElementById('alertsSidebar').classList.add('open'));
+    document.getElementById('closeSidebarBtn').addEventListener('click', () => document.getElementById('alertsSidebar').classList.remove('open'));
     document.getElementById('copyAlertsBtn').addEventListener('click', copyAlertsList);
     window.addEventListener('resize', () => map.invalidateSize());
     setTimeout(() => map.invalidateSize(), 200);
