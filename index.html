@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Air Alert Map — vrv_radar</title>
+    <title>Air Alert Map — vrv_radar + locatorru</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -379,14 +379,17 @@
     };
     const allRegionNames = Object.keys(regionAliases);
 
-    // =========================== УЛУЧШЕННЫЙ ПАРСИНГ TELEGRAM (канал vrv_radar) ===========================
+    // =========================== ДВА КАНАЛА: vrv_radar + locatorru ===========================
+    const channels = [
+        { name: "vrv_radar", url: "https://t.me/s/vrv_radar" },
+        { name: "locatorru", url: "https://t.me/s/locatorru" }
+    ];
     const proxies = [
         "https://api.allorigins.win/raw?url=",
         "https://cors-anywhere.herokuapp.com/",
         "https://corsproxy.io/?",
         "https://thingproxy.freeboard.io/fetch/"
     ];
-    const channel = "https://t.me/s/vrv_radar";
 
     async function fetchWithProxy(url, proxyList) {
         for (let proxy of proxyList) {
@@ -402,29 +405,58 @@
         throw new Error("Все прокси недоступны");
     }
 
-    async function parseTelegramAlerts() {
+    // Парсинг одного канала: извлекаем посты с ID, текстом и временем (timestamp)
+    async function parseChannel(channelInfo) {
         let html = null;
         try {
-            html = await fetchWithProxy(channel, proxies);
+            html = await fetchWithProxy(channelInfo.url, proxies);
         } catch(e) {
-            console.warn("Канал vrv_radar не загрузился", e);
+            console.warn(`Канал ${channelInfo.name} не загрузился`, e);
             return [];
         }
         if (!html) return [];
 
-        const regex = /data-post="vrv_radar\/(\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\/div>/gis;
+        // Регулярка для извлечения ID, текста и времени
+        // Пример: data-post="vrv_radar/1234" ... <time datetime="2025-01-15T12:34:56+00:00">
+        const postRegex = /data-post="[^"]+\/(\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\/div>.*?<time datetime="([^"]+)"/gis;
         const posts = [];
         let m;
-        while ((m = regex.exec(html)) !== null) {
+        while ((m = postRegex.exec(html)) !== null) {
+            let id = parseInt(m[1]);
             let text = m[2].replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+            let datetime = m[3];
+            let timestamp = new Date(datetime).getTime();
+            if (isNaN(timestamp)) timestamp = 0;
             if (text) {
-                posts.push({ id: parseInt(m[1]), text });
+                posts.push({ id, text, timestamp, channel: channelInfo.name });
             }
         }
-        posts.sort((a,b) => a.id - b.id);
-        const lastPosts = posts.slice(-60);
-        console.log(`Получено постов: ${posts.length}, взято последних: ${lastPosts.length}`);
-        return lastPosts;
+        // Если не удалось извлечь время (старый формат), используем ID как fallback
+        if (posts.length === 0) {
+            const fallbackRegex = /data-post="[^"]+\/(\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\/div>/gis;
+            while ((m = fallbackRegex.exec(html)) !== null) {
+                let id = parseInt(m[1]);
+                let text = m[2].replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+                if (text) {
+                    posts.push({ id, text, timestamp: id, channel: channelInfo.name });
+                }
+            }
+        }
+        console.log(`Канал ${channelInfo.name}: получено ${posts.length} постов`);
+        return posts;
+    }
+
+    // Получение всех постов с двух каналов, объединённых и отсортированных по времени (новые первыми)
+    async function getAllPosts() {
+        const allPosts = [];
+        for (const channel of channels) {
+            const posts = await parseChannel(channel);
+            allPosts.push(...posts);
+        }
+        // Сортируем по timestamp (по убыванию: свежие выше)
+        allPosts.sort((a, b) => b.timestamp - a.timestamp);
+        console.log(`Всего постов с двух каналов: ${allPosts.length}`);
+        return allPosts;
     }
 
     // =========================== ОСНОВНОЕ ОБНОВЛЕНИЕ (с учётом droneAlert) ===========================
@@ -433,7 +465,7 @@
         statusDiv.innerHTML = '🔄 Обновление...';
 
         try {
-            const posts = await parseTelegramAlerts();
+            const posts = await getAllPosts();
             const newStatus = {};
 
             allRegionNames.forEach(region => {
@@ -446,13 +478,13 @@
                 };
             });
 
-            const sortedPosts = [...posts].sort((a, b) => a.id - b.id);
-
-            for (const post of sortedPosts) {
-                const text = post.text.replace(/\s+/g, ' ').trim().toLowerCase();
+            // Обрабатываем посты в порядке убывания времени (свежие первыми)
+            for (const post of posts) {
+                const text = post.text;
+                const postId = post.id;
+                const postTime = post.timestamp;
 
                 const isAllRegions = /все регионы|по всей россии|по всем регионам|всех регионах|везде/i.test(text);
-
                 let matchedRegions = new Set();
                 if (!isAllRegions) {
                     for (const [official, aliases] of Object.entries(regionAliases)) {
@@ -463,64 +495,62 @@
                         if (found) matchedRegions.add(official);
                     }
                 }
-
                 const targetRegions = isAllRegions ? allRegionNames : [...matchedRegions];
                 if (!targetRegions.length) continue;
 
                 const isOtboy = /отбой|снята|завершена|отменена|угроза снята|нет угрозы/i.test(text);
                 const isRocket = /ракетн|баллистическ|крылат.*ракет/i.test(text);
                 const isDrone = /бпла|беспилот|дрон/i.test(text);
-                const isDroneAlert = /тревога по бпла|фиксация бпла|фиксации бпла/i.test(text);
+                const isDroneAlert = /тревога по бпла|фиксация бпла|фиксации бпла|тревога бпла/i.test(text);
 
                 for (const region of targetRegions) {
                     const state = newStatus[region];
                     if (!state) continue;
 
-                    // ОТБОЙ
+                    // Отбой
                     if (isOtboy) {
                         if (isRocket) {
-                            if (post.id > state.lastRocketPost) {
+                            if (postTime > state.lastRocketPost) {
                                 state.rocket = false;
-                                state.lastRocketPost = post.id;
+                                state.lastRocketPost = postTime;
                             }
                         } else if (isDrone) {
-                            if (post.id > state.lastDronePost) {
+                            if (postTime > state.lastDronePost) {
                                 state.drone = false;
                                 state.droneAlert = false;
-                                state.lastDronePost = post.id;
+                                state.lastDronePost = postTime;
                             }
                         } else {
-                            if (post.id > state.lastRocketPost) {
+                            if (postTime > state.lastRocketPost) {
                                 state.rocket = false;
-                                state.lastRocketPost = post.id;
+                                state.lastRocketPost = postTime;
                             }
-                            if (post.id > state.lastDronePost) {
+                            if (postTime > state.lastDronePost) {
                                 state.drone = false;
                                 state.droneAlert = false;
-                                state.lastDronePost = post.id;
+                                state.lastDronePost = postTime;
                             }
                         }
                         continue;
                     }
 
-                    // ТРЕВОГА
-                    if (isDroneAlert) {
-                        if (state.drone) {
+                    // Установка тревог
+                    if (isDroneAlert && state.drone) {
+                        if (postTime > state.lastDronePost) {
                             state.droneAlert = true;
+                            state.lastDronePost = postTime;
                         }
                     }
-
                     if (isRocket) {
-                        if (post.id > state.lastRocketPost) {
+                        if (postTime > state.lastRocketPost) {
                             state.rocket = true;
-                            state.lastRocketPost = post.id;
+                            state.lastRocketPost = postTime;
                         }
                     }
-
                     if (isDrone) {
-                        if (post.id > state.lastDronePost) {
+                        if (postTime > state.lastDronePost) {
                             state.drone = true;
-                            state.lastDronePost = post.id;
+                            state.lastDronePost = postTime;
                         }
                     }
                 }
