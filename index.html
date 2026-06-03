@@ -423,7 +423,7 @@
             }
         }
         posts.sort((a,b) => a.id - b.id);
-        const lastPosts = posts.slice(-120);   // увеличили до 60 постов
+        const lastPosts = posts.slice(-200);   // увеличили до 60 постов
         console.log(`Получено постов: ${posts.length}, взято последних: ${lastPosts.length}`);
         return lastPosts;
     }
