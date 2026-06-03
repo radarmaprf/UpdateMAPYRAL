@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Air Alert Map — locatorru</title>
+    <title>Air Alert Map — Тревоги РФ</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -103,13 +103,15 @@
             background: rgba(30,35,50,0.7); margin-bottom: 10px; padding: 12px;
             border-radius: 12px; border-left: 4px solid; transition: 0.1s;
         }
-        .alert-region-item.drone { border-left-color: #ffc107; }
-        .alert-region-item.rocket { border-left-color: #dc3545; }
+        .alert-region-item.droneAlert { border-left-color: #dc3545; }
+        .alert-region-item.rocket { border-left-color: #8B0000; }
+        .alert-region-item.droneDanger { border-left-color: #ffc107; }
         
         .region-name { font-weight: bold; font-size: 1rem; margin-bottom: 5px; color: #fff; }
         .alert-type { font-size: 0.8rem; display: inline-block; padding: 2px 8px; border-radius: 20px; }
-        .alert-type.drone { background: #ffc10720; color: #ffc107; border: 1px solid #ffc107; }
-        .alert-type.rocket { background: #dc354520; color: #ff8888; border: 1px solid #dc3545; }
+        .alert-type.droneAlert { background: #dc354520; color: #ff8888; border: 1px solid #dc3545; }
+        .alert-type.rocket { background: #8B000030; color: #ffaaaa; border: 1px solid #8B0000; }
+        .alert-type.droneDanger { background: #ffc10720; color: #ffc107; border: 1px solid #ffc107; }
         
         .empty-message {
             color: #aaa; text-align: center; padding: 30px 20px;
@@ -156,7 +158,8 @@
 <div class="legend">
     <div class="legend-item"><div class="legend-color" style="background: #6c757d;"></div> <span>⚪ Отбой / Спокойно</span></div>
     <div class="legend-item"><div class="legend-color" style="background: #ffc107;"></div> <span>🟡 Опасность БПЛА</span></div>
-    <div class="legend-item"><div class="legend-color" style="background: #dc3545;"></div> <span>🔴 Ракетная опасность</span></div>
+    <div class="legend-item"><div class="legend-color" style="background: #dc3545;"></div> <span>🔴 Тревога БПЛА (фиксация/ПВО)</span></div>
+    <div class="legend-item"><div class="legend-color" style="background: #8B0000;"></div> <span>🟤 Ракетная опасность</span></div>
 </div>
 <button class="update-btn" id="updateBtn">🔄 Обновить</button>
 <div class="status" id="status">Загрузка...</div>
@@ -165,7 +168,7 @@
 
 <div id="alertsPanel" class="alerts-panel">
     <div class="panel-header">
-        <h3>🚨 Регионы с тревогой</h3>
+        <h3>🚨 Регионы с тревогами</h3>
         <div class="panel-actions">
             <button class="copy-btn" id="copyAlertsBtn" title="Копировать список">📋 Копировать</button>
             <button class="close-panel" id="closePanelBtn">&times;</button>
@@ -184,8 +187,15 @@
         attribution: '', subdomains: 'abcd', maxZoom: 10, minZoom: 2
     }).addTo(map);
 
-    let regionStatus = {}; // { region: { drone, rocket } }
-    const colors = { clear: "#6c757d", drone: "#ffc107", rocket: "#dc3545" };
+    // Структура статуса региона:
+    // { droneDanger: false, droneAlert: false, rocketDanger: false }
+    let regionStatus = {};
+    const colors = { 
+        clear: "#6c757d", 
+        droneDanger: "#ffc107",      // жёлтый — опасность БПЛА
+        droneAlert: "#dc3545",       // красный — тревога БПЛА (фиксация/ПВО)
+        rocket: "#8B0000"            // бордовый — ракетная опасность
+    };
     let polygonsLayer = null;
 
     // =========================== ЧАСЫ ===========================
@@ -204,20 +214,30 @@
         return parts[0] + '<br>' + parts.slice(1).join(' ');
     }
 
-    function getPopupContent(regionName, drone, rocket) {
+    function getPopupContent(regionName, status) {
         const formatted = formatName(regionName);
         let text = "", color = "";
-        if (rocket) {
-            text = "🔴 РАКЕТНАЯ ОПАСНОСТЬ! Укрытие!";
+        if (status.rocket) {
+            text = "🟤 РАКЕТНАЯ ОПАСНОСТЬ! Укрытие!";
+            color = "#ffaaaa";
+        } else if (status.droneAlert) {
+            text = "🔴 ТРЕВОГА БПЛА! Фиксация / Работа ПВО";
             color = "#ff8888";
-        } else if (drone) {
-            text = "🟡 Опасность БПЛА";
+        } else if (status.droneDanger) {
+            text = "🟡 Опасность БПЛА в регионе";
             color = "#ffc107";
         } else {
             text = "⚪ Отбой / Спокойно";
             color = "#adb5bd";
         }
-        return `<div style="font-family:'Segoe UI';min-width:140px;"><b style="font-size:1rem;">${formatted}</b><br><span style="color:${color}">${text}</span></div>`;
+        return `<div style="font-family:'Segoe UI';min-width:160px;"><b style="font-size:1rem;">${formatted}</b><br><span style="color:${color}">${text}</span></div>`;
+    }
+
+    function getFillColor(status) {
+        if (status.rocket) return colors.rocket;
+        if (status.droneAlert) return colors.droneAlert;
+        if (status.droneDanger) return colors.droneDanger;
+        return colors.clear;
     }
 
     function updateAllPolygons() {
@@ -225,12 +245,10 @@
         polygonsLayer.eachLayer(layer => {
             const name = layer.regionName;
             if (name && regionStatus[name]) {
-                const { drone, rocket } = regionStatus[name];
-                let fillColor = colors.clear;
-                if (rocket) fillColor = colors.rocket;
-                else if (drone) fillColor = colors.drone;
+                const st = regionStatus[name];
+                const fillColor = getFillColor(st);
                 layer.setStyle({ fillColor, fillOpacity: 0.7 });
-                layer.getPopup().setContent(getPopupContent(name, drone, rocket));
+                layer.getPopup().setContent(getPopupContent(name, st));
             }
         });
         updateAlertsPanel();
@@ -240,18 +258,15 @@
         const panelContent = document.getElementById('panelContent');
         const active = [];
         for (const [region, flags] of Object.entries(regionStatus)) {
-            if (flags.rocket) active.push({ name: region, type: 'rocket', label: '🔴 Ракетная опасность' });
-            else if (flags.drone) active.push({ name: region, type: 'drone', label: '🟡 Опасность БПЛА' });
+            if (flags.rocket) active.push({ name: region, type: 'rocket', label: '🟤 Ракетная опасность', priority: 1 });
+            else if (flags.droneAlert) active.push({ name: region, type: 'droneAlert', label: '🔴 Тревога БПЛА (фиксация/ПВО)', priority: 2 });
+            else if (flags.droneDanger) active.push({ name: region, type: 'droneDanger', label: '🟡 Опасность БПЛА', priority: 3 });
         }
         if (active.length === 0) {
             panelContent.innerHTML = '<div class="empty-message">✨ Нет активных тревог</div>';
             return;
         }
-        active.sort((a,b) => {
-            if (a.type === 'rocket' && b.type !== 'rocket') return -1;
-            if (a.type !== 'rocket' && b.type === 'rocket') return 1;
-            return a.name.localeCompare(b.name);
-        });
+        active.sort((a,b) => a.priority - b.priority);
         panelContent.innerHTML = active.map(reg => `
             <div class="alert-region-item ${reg.type}">
                 <div class="region-name">${reg.name}</div>
@@ -263,8 +278,9 @@
     async function copyAlertsList() {
         const active = [];
         for (const [region, flags] of Object.entries(regionStatus)) {
-            if (flags.rocket) active.push(`🔴 ${region} — Ракетная опасность`);
-            else if (flags.drone) active.push(`🟡 ${region} — Опасность БПЛА`);
+            if (flags.rocket) active.push(`🟤 ${region} — Ракетная опасность`);
+            else if (flags.droneAlert) active.push(`🔴 ${region} — Тревога БПЛА (фиксация/работа ПВО)`);
+            else if (flags.droneDanger) active.push(`🟡 ${region} — Опасность БПЛА`);
         }
         if (active.length === 0) {
             showToast("✨ Нет активных тревог для копирования");
@@ -399,7 +415,6 @@
         }
         if (!html) return [];
 
-        // Извлекаем посты: data-post и текст внутри tgme_widget_message_text
         const regex = /data-post="(?:locatorru|radarrussiia|radaryral)\/(\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\/div>/gis;
         const posts = [];
         let m;
@@ -409,14 +424,12 @@
                 posts.push({ id: parseInt(m[1]), text });
             }
         }
-        posts.sort((a,b) => a.id - b.id); // от старых к новым
+        posts.sort((a,b) => a.id - b.id);
         console.log(`Получено постов: ${posts.length}`);
         return posts;
     }
 
-    // Определение регионов из текста (поддерживает перечисления)
     function extractRegions(text, allNames) {
-        // Если сообщение адресовано всем регионам
         if (/все регионы|по всей россии|всех регионах|везде|повсеместно/i.test(text)) {
             return allNames.slice();
         }
@@ -429,55 +442,74 @@
         return Array.from(found);
     }
 
-    // Определение типа события (тревога/отбой) и типа угрозы
+    // Возвращает { type, danger, isFixation? }
     function classifyEvent(text) {
         const lower = text;
-        // Флаги
-        const hasRocket = /ракетн(?:ая|ую|ой|ая)\s*(?:опасность|тревога)|баллистическ(?:ая|ую)|крылат(?:ая|ую)/i.test(lower);
-        const hasDrone = /бпла|беспилотн(?:ик|ый|ая)|атака\s*бпла|опасность\s*бпла/i.test(lower);
+        const isRocket = /ракетн(?:ая|ую|ой|ая)\s*(?:опасность|тревога)|баллистическ(?:ая|ую)|крылат(?:ая|ую)/i.test(lower);
+        const isDroneDanger = /бпла|беспилотн(?:ик|ый|ая)|опасность\s*бпла|угроза\s*бпла/i.test(lower);
+        const isFixation = /фиксаци[яи]|работа\s*пво|пво\s*работает|сбиваю|сбитие|тревога/i.test(lower);
         
-        // Отбой может быть общим или конкретным
         const isCancel = /отбой|снят[ао]|завершен[ао]|отменен[ао]|нет\s*угрозы|угроза\s*снят[ао]/i.test(lower);
         
-        // Если это отбой – нужно понять, чего именно
         if (isCancel) {
-            const cancelRocket = /отбой\s*ракетн|снят[ао]\s*ракетн|ракетн(?:ая|ую)\s*опасность\s*отменен|отбой\s*ракетной/i.test(lower);
-            const cancelDrone = /отбой\s*бпла|снят[ао]\s*бпла|беспилотн(?:ая|ую)\s*опасность\s*отменен/i.test(lower);
+            const cancelRocket = /отбой\s*ракетн|снят[ао]\s*ракетн|ракетн(?:ая|ую)\s*опасность\s*отменен/i.test(lower);
+            const cancelDrone = /отбой\s*бпла|снят[ао]\s*бпла|отбой\s*опасности\s*бпла/i.test(lower);
             if (cancelRocket) return { type: 'cancel', danger: 'rocket' };
             if (cancelDrone) return { type: 'cancel', danger: 'drone' };
-            // Если явно не указано, но есть слово "отбой" – считаем общим отбоем всех типов
-            if (!hasRocket && !hasDrone) return { type: 'cancel', danger: 'both' };
-            // Если в тексте одновременно есть "отбой" и "ракетная опасность" (например "Отбой ракетной опасности") – уже поймано выше.
-            // Если остались неоднозначности – лучше отменить оба, чтобы не висеть.
             return { type: 'cancel', danger: 'both' };
         }
         
-        // Это не отбой, значит тревога
-        if (hasRocket) return { type: 'alert', danger: 'rocket' };
-        if (hasDrone) return { type: 'alert', danger: 'drone' };
-        return null; // сообщение не содержит информации о тревоге/отбое
+        // Если есть ракетная угроза (высший приоритет)
+        if (isRocket) return { type: 'alert', danger: 'rocket' };
+        
+        // Обработка БПЛА: отдельно фиксация (тревога) и просто опасность
+        if (isFixation) {
+            // Тревога БПЛА включается ТОЛЬКО если в регионе уже есть droneDanger (проверка позже)
+            return { type: 'droneAlert', danger: 'drone' };
+        }
+        
+        if (isDroneDanger) {
+            return { type: 'alert', danger: 'drone' };
+        }
+        
+        return null;
     }
 
-    // Применение события к статусам регионов
     function applyEvent(regions, event, currentStatus) {
         for (const region of regions) {
-            if (!currentStatus[region]) currentStatus[region] = { drone: false, rocket: false };
+            if (!currentStatus[region]) currentStatus[region] = { droneDanger: false, droneAlert: false, rocketDanger: false };
             const st = currentStatus[region];
+            
             if (event.type === 'alert') {
-                if (event.danger === 'rocket') st.rocket = true;
-                else if (event.danger === 'drone') st.drone = true;
-            } else if (event.type === 'cancel') {
-                if (event.danger === 'rocket') st.rocket = false;
-                else if (event.danger === 'drone') st.drone = false;
-                else if (event.danger === 'both') {
-                    st.rocket = false;
-                    st.drone = false;
+                if (event.danger === 'rocket') {
+                    st.rocketDanger = true;
+                } else if (event.danger === 'drone') {
+                    st.droneDanger = true;
+                    // При появлении опасности БПЛА тревога НЕ сбрасывается, но может остаться старая.
+                    // Новая тревога будет установлена отдельным событием fixation
+                }
+            } 
+            else if (event.type === 'droneAlert') {
+                // Тревога БПЛА (фиксация/работа ПВО) - включаем только если уже есть droneDanger
+                if (st.droneDanger) {
+                    st.droneAlert = true;
+                }
+            }
+            else if (event.type === 'cancel') {
+                if (event.danger === 'rocket') {
+                    st.rocketDanger = false;
+                } else if (event.danger === 'drone') {
+                    st.droneDanger = false;
+                    st.droneAlert = false;   // отмена опасности снимает и тревогу
+                } else if (event.danger === 'both') {
+                    st.rocketDanger = false;
+                    st.droneDanger = false;
+                    st.droneAlert = false;
                 }
             }
         }
     }
 
-    // Основная функция обновления – последовательно обрабатывает все посты
     async function refreshAlerts() {
         const statusDiv = document.getElementById('status');
         statusDiv.innerHTML = '🔄 Обновление...';
@@ -485,7 +517,6 @@
             const posts = await parseTelegramAlerts();
             if (posts.length === 0) throw new Error("Нет постов");
             
-            // Временно создаём новую копию текущего состояния, чтобы применить все изменения последовательно
             const newStatus = JSON.parse(JSON.stringify(regionStatus));
             
             for (const post of posts) {
@@ -497,10 +528,9 @@
                 if (!event) continue;
                 
                 applyEvent(regions, event, newStatus);
-                console.log(`Пост ${post.id}: ${event.type} ${event.danger} для [${regions.join(', ')}]`);
+                console.log(`Пост ${post.id}: ${event.type} ${event.danger || ''} для [${regions.join(', ')}]`);
             }
             
-            // Применяем обновлённые статусы
             regionStatus = newStatus;
             updateAllPolygons();
             localStorage.setItem("alertCache", JSON.stringify(regionStatus));
@@ -529,9 +559,8 @@
             style: (feature) => {
                 let name = feature.properties?.name || feature.properties?.NAME || feature.properties?.admin_name || "";
                 let fillColor = colors.clear;
-                if (regionStatus[name]) {
-                    if (regionStatus[name].rocket) fillColor = colors.rocket;
-                    else if (regionStatus[name].drone) fillColor = colors.drone;
+                if (name && regionStatus[name]) {
+                    fillColor = getFillColor(regionStatus[name]);
                 }
                 return { color: "#fff", weight: 2.2, fillColor, fillOpacity: 0.7, smoothFactor: 0.5 };
             },
@@ -539,16 +568,16 @@
                 let name = f.properties?.name || f.properties?.NAME || f.properties?.admin_name || "";
                 if (name) {
                     layer.regionName = name;
-                    if (!regionStatus[name]) regionStatus[name] = { drone: false, rocket: false };
-                    const { drone, rocket } = regionStatus[name];
-                    layer.bindPopup(getPopupContent(name, drone, rocket), { className: 'custom-popup' });
+                    if (!regionStatus[name]) regionStatus[name] = { droneDanger: false, droneAlert: false, rocketDanger: false };
+                    const st = regionStatus[name];
+                    layer.bindPopup(getPopupContent(name, st), { className: 'custom-popup' });
                 }
             }
         }).addTo(map);
         
         polygonsLayer.eachLayer(layer => {
             if (layer.regionName && !regionStatus[layer.regionName]) {
-                regionStatus[layer.regionName] = { drone: false, rocket: false };
+                regionStatus[layer.regionName] = { droneDanger: false, droneAlert: false, rocketDanger: false };
             }
         });
         
@@ -581,9 +610,10 @@
         try {
             const saved = JSON.parse(cached);
             for (let reg in saved) {
-                if (!regionStatus[reg]) regionStatus[reg] = { drone: false, rocket: false };
-                regionStatus[reg].drone = saved[reg].drone || false;
-                regionStatus[reg].rocket = saved[reg].rocket || false;
+                if (!regionStatus[reg]) regionStatus[reg] = { droneDanger: false, droneAlert: false, rocketDanger: false };
+                regionStatus[reg].droneDanger = saved[reg].droneDanger || false;
+                regionStatus[reg].droneAlert = saved[reg].droneAlert || false;
+                regionStatus[reg].rocketDanger = saved[reg].rocketDanger || false;
             }
         } catch(e) {}
     }
