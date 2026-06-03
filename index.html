@@ -104,12 +104,14 @@
             border-radius: 12px; border-left: 4px solid; transition: 0.1s;
         }
         .alert-region-item.drone { border-left-color: #ffc107; }
-        .alert-region-item.rocket { border-left-color: #dc3545; }
+        .alert-region-item.droneAlert { border-left-color: #ff0000; }
+        .alert-region-item.rocket { border-left-color: #800020; }
         
         .region-name { font-weight: bold; font-size: 1rem; margin-bottom: 5px; color: #fff; }
         .alert-type { font-size: 0.8rem; display: inline-block; padding: 2px 8px; border-radius: 20px; }
         .alert-type.drone { background: #ffc10720; color: #ffc107; border: 1px solid #ffc107; }
-        .alert-type.rocket { background: #dc354520; color: #ff8888; border: 1px solid #dc3545; }
+        .alert-type.droneAlert { background: #ff000020; color: #ff8888; border: 1px solid #ff0000; }
+        .alert-type.rocket { background: #80002020; color: #ffb3b3; border: 1px solid #800020; }
         
         .empty-message {
             color: #aaa; text-align: center; padding: 30px 20px;
@@ -156,7 +158,8 @@
 <div class="legend">
     <div class="legend-item"><div class="legend-color" style="background: #6c757d;"></div> <span>⚪ Отбой / Спокойно</span></div>
     <div class="legend-item"><div class="legend-color" style="background: #ffc107;"></div> <span>🟡 Опасность БПЛА</span></div>
-    <div class="legend-item"><div class="legend-color" style="background: #dc3545;"></div> <span>🔴 Ракетная опасность</span></div>
+    <div class="legend-item"><div class="legend-color" style="background: #ff0000;"></div> <span>🔴 Тревога по БПЛА</span></div>
+    <div class="legend-item"><div class="legend-color" style="background: #800020;"></div> <span>🟤 Ракетная опасность</span></div>
 </div>
 <button class="update-btn" id="updateBtn">🔄 Обновить</button>
 <div class="status" id="status">Загрузка...</div>
@@ -184,8 +187,13 @@
         attribution: '', subdomains: 'abcd', maxZoom: 10, minZoom: 2
     }).addTo(map);
 
-    let regionStatus = {}; // { region: { drone, rocket } }
-    const colors = { clear: "#6c757d", drone: "#ffc107", rocket: "#dc3545" };
+    let regionStatus = {}; // { region: { drone, droneAlert, rocket } }
+    const colors = {
+        clear: "#6c757d",
+        drone: "#ffc107",      // жёлтая опасность БПЛА
+        droneAlert: "#ff0000", // красная тревога по БПЛА
+        rocket: "#800020"      // бордовая ракетная
+    };
     let polygonsLayer = null;
 
     // =========================== ЧАСЫ ===========================
@@ -204,12 +212,15 @@
         return parts[0] + '<br>' + parts.slice(1).join(' ');
     }
 
-    function getPopupContent(regionName, drone, rocket) {
+    function getPopupContent(regionName, drone, droneAlert, rocket) {
         const formatted = formatName(regionName);
         let text = "", color = "";
         if (rocket) {
-            text = "🔴 РАКЕТНАЯ ОПАСНОСТЬ! Укрытие!";
-            color = "#ff8888";
+            text = "🟤 РАКЕТНАЯ ОПАСНОСТЬ!";
+            color = "#800020";
+        } else if (droneAlert) {
+            text = "🔴 ТРЕВОГА ПО БПЛА!";
+            color = "#ff0000";
         } else if (drone) {
             text = "🟡 Опасность БПЛА";
             color = "#ffc107";
@@ -225,12 +236,13 @@
         polygonsLayer.eachLayer(layer => {
             const name = layer.regionName;
             if (name && regionStatus[name]) {
-                const { drone, rocket } = regionStatus[name];
+                const { drone, droneAlert, rocket } = regionStatus[name];
                 let fillColor = colors.clear;
                 if (rocket) fillColor = colors.rocket;
+                else if (droneAlert) fillColor = colors.droneAlert;
                 else if (drone) fillColor = colors.drone;
                 layer.setStyle({ fillColor, fillOpacity: 0.7 });
-                layer.getPopup().setContent(getPopupContent(name, drone, rocket));
+                layer.getPopup().setContent(getPopupContent(name, drone, droneAlert, rocket));
             }
         });
         updateAlertsPanel();
@@ -240,7 +252,8 @@
         const panelContent = document.getElementById('panelContent');
         const active = [];
         for (const [region, flags] of Object.entries(regionStatus)) {
-            if (flags.rocket) active.push({ name: region, type: 'rocket', label: '🔴 Ракетная опасность' });
+            if (flags.rocket) active.push({ name: region, type: 'rocket', label: '🟤 Ракетная опасность' });
+            else if (flags.droneAlert) active.push({ name: region, type: 'droneAlert', label: '🔴 Тревога по БПЛА' });
             else if (flags.drone) active.push({ name: region, type: 'drone', label: '🟡 Опасность БПЛА' });
         }
         if (active.length === 0) {
@@ -248,8 +261,8 @@
             return;
         }
         active.sort((a,b) => {
-            if (a.type === 'rocket' && b.type !== 'rocket') return -1;
-            if (a.type !== 'rocket' && b.type === 'rocket') return 1;
+            const order = { rocket: 0, droneAlert: 1, drone: 2 };
+            if (order[a.type] !== order[b.type]) return order[a.type] - order[b.type];
             return a.name.localeCompare(b.name);
         });
         panelContent.innerHTML = active.map(reg => `
@@ -263,7 +276,8 @@
     async function copyAlertsList() {
         const active = [];
         for (const [region, flags] of Object.entries(regionStatus)) {
-            if (flags.rocket) active.push(`🔴 ${region} — Ракетная опасность`);
+            if (flags.rocket) active.push(`🟤 ${region} — Ракетная опасность`);
+            else if (flags.droneAlert) active.push(`🔴 ${region} — Тревога по БПЛА`);
             else if (flags.drone) active.push(`🟡 ${region} — Опасность БПЛА`);
         }
         if (active.length === 0) {
@@ -399,7 +413,6 @@
         }
         if (!html) return [];
 
-        // Извлекаем посты: data-post и текст внутри tgme_widget_message_text
         const regex = /data-post="(?:locatorru|radarrussiia|radaryral)\/(\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\/div>/gis;
         const posts = [];
         let m;
@@ -409,272 +422,139 @@
                 posts.push({ id: parseInt(m[1]), text });
             }
         }
-        posts.sort((a,b) => a.id - b.id); // от старых к новым
-        console.log(`Получено постов: ${posts.length}`);
-        return posts;
+        posts.sort((a,b) => a.id - b.id);
+        const lastPosts = posts.slice(-60);   // увеличили до 60 постов
+        console.log(`Получено постов: ${posts.length}, взято последних: ${lastPosts.length}`);
+        return lastPosts;
     }
 
-    // Определение регионов из текста (поддерживает перечисления)
-    function extractRegions(text, allNames) {
-        // Если сообщение адресовано всем регионам
-        if (/все регионы|по всей россии|всех регионах|везде|повсеместно/i.test(text)) {
-            return allNames.slice();
-        }
-        const found = new Set();
-        for (const [official, keywords] of Object.entries(regionAliases)) {
-            if (keywords.some(kw => text.includes(kw))) {
-                found.add(official);
-            }
-        }
-        return Array.from(found);
-    }
-
-    // Определение типа события (тревога/отбой) и типа угрозы
-    function classifyEvent(text) {
-        const lower = text;
-        // Флаги
-        const hasRocket = /ракетн(?:ая|ую|ой|ая)\s*(?:опасность|тревога)|баллистическ(?:ая|ую)|крылат(?:ая|ую)/i.test(lower);
-        const hasDrone = /бпла|беспилотн(?:ик|ый|ая)|атака\s*бпла|опасность\s*бпла/i.test(lower);
-        
-        // Отбой может быть общим или конкретным
-        const isCancel = /отбой|снят[ао]|завершен[ао]|отменен[ао]|нет\s*угрозы|угроза\s*снят[ао]/i.test(lower);
-        
-        // Если это отбой – нужно понять, чего именно
-        if (isCancel) {
-            const cancelRocket = /отбой\s*ракетн|снят[ао]\s*ракетн|ракетн(?:ая|ую)\s*опасность\s*отменен|отбой\s*ракетной/i.test(lower);
-            const cancelDrone = /отбой\s*бпла|снят[ао]\s*бпла|беспилотн(?:ая|ую)\s*опасность\s*отменен/i.test(lower);
-            if (cancelRocket) return { type: 'cancel', danger: 'rocket' };
-            if (cancelDrone) return { type: 'cancel', danger: 'drone' };
-            // Если явно не указано, но есть слово "отбой" – считаем общим отбоем всех типов
-            if (!hasRocket && !hasDrone) return { type: 'cancel', danger: 'both' };
-            // Если в тексте одновременно есть "отбой" и "ракетная опасность" (например "Отбой ракетной опасности") – уже поймано выше.
-            // Если остались неоднозначности – лучше отменить оба, чтобы не висеть.
-            return { type: 'cancel', danger: 'both' };
-        }
-        
-        // Это не отбой, значит тревога
-        if (hasRocket) return { type: 'alert', danger: 'rocket' };
-        if (hasDrone) return { type: 'alert', danger: 'drone' };
-        return null; // сообщение не содержит информации о тревоге/отбое
-    }
-
-    // Применение события к статусам регионов
-    function applyEvent(regions, event, currentStatus) {
-        for (const region of regions) {
-            if (!currentStatus[region]) currentStatus[region] = { drone: false, rocket: false };
-            const st = currentStatus[region];
-            if (event.type === 'alert') {
-                if (event.danger === 'rocket') st.rocket = true;
-                else if (event.danger === 'drone') st.drone = true;
-            } else if (event.type === 'cancel') {
-                if (event.danger === 'rocket') st.rocket = false;
-                else if (event.danger === 'drone') st.drone = false;
-                else if (event.danger === 'both') {
-                    st.rocket = false;
-                    st.drone = false;
-                }
-            }
-        }
-    }
-
-    // Основная функция обновления – последовательно обрабатывает все посты
+    // =========================== ОСНОВНОЕ ОБНОВЛЕНИЕ (с учётом droneAlert) ===========================
     async function refreshAlerts() {
+        const statusDiv = document.getElementById('status');
+        statusDiv.innerHTML = '🔄 Обновление...';
 
-    const statusDiv = document.getElementById('status');
-    statusDiv.innerHTML = '🔄 Обновление...';
+        try {
+            const posts = await parseTelegramAlerts();
+            const newStatus = {};
 
-    try {
+            allRegionNames.forEach(region => {
+                newStatus[region] = {
+                    drone: false,
+                    droneAlert: false,
+                    rocket: false,
+                    lastDronePost: 0,
+                    lastRocketPost: 0
+                };
+            });
 
-        const posts = await parseTelegramAlerts();
+            const sortedPosts = [...posts].sort((a, b) => a.id - b.id);
 
-        // Полный пересчёт состояния
-        const newStatus = {};
+            for (const post of sortedPosts) {
+                const text = post.text.replace(/\s+/g, ' ').trim().toLowerCase();
 
-        allRegionNames.forEach(region => {
-            newStatus[region] = {
-                drone: false,
-                rocket: false,
-                lastDronePost: 0,
-                lastRocketPost: 0
-            };
-        });
+                const isAllRegions = /все регионы|по всей россии|по всем регионам|всех регионах|везде/i.test(text);
 
-        const sortedPosts = [...posts]
-            .sort((a, b) => a.id - b.id);
-
-        for (const post of sortedPosts) {
-
-            const text = post.text
-                .replace(/\s+/g, ' ')
-                .trim()
-                .toLowerCase();
-
-            const isAllRegions =
-                /все регионы|по всей россии|по всем регионам|всех регионах|везде/i
-                .test(text);
-
-            let matchedRegions = new Set();
-
-            if (!isAllRegions) {
-
-                for (const [official, aliases] of Object.entries(regionAliases)) {
-
-                    const found = aliases.some(alias => {
-
-                        const escaped =
-                            alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-                        return new RegExp(
-                            `(^|\\s|\\b)${escaped}(\\s|\\b|$)`,
-                            'i'
-                        ).test(text);
-
-                    });
-
-                    if (found) {
-                        matchedRegions.add(official);
+                let matchedRegions = new Set();
+                if (!isAllRegions) {
+                    for (const [official, aliases] of Object.entries(regionAliases)) {
+                        const found = aliases.some(alias => {
+                            const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                            return new RegExp(`(^|\\s|\\b)${escaped}(\\s|\\b|$)`, 'i').test(text);
+                        });
+                        if (found) matchedRegions.add(official);
                     }
                 }
-            }
 
-            const targetRegions =
-                isAllRegions
-                    ? allRegionNames
-                    : [...matchedRegions];
+                const targetRegions = isAllRegions ? allRegionNames : [...matchedRegions];
+                if (!targetRegions.length) continue;
 
-            if (!targetRegions.length) {
-                continue;
-            }
+                const isOtboy = /отбой|снята|завершена|отменена|угроза снята|нет угрозы/i.test(text);
+                const isRocket = /ракетн|баллистическ|крылат.*ракет/i.test(text);
+                const isDrone = /бпла|беспилот|дрон/i.test(text);
+                const isDroneAlert = /тревога по бпла|фиксация бпла|фиксации бпла/i.test(text);
 
-            const isOtboy =
-                /отбой|снята|завершена|отменена|угроза снята|нет угрозы/i
-                .test(text);
+                for (const region of targetRegions) {
+                    const state = newStatus[region];
+                    if (!state) continue;
 
-            const isRocket =
-                /ракетн|баллистическ|крылат.*ракет/i
-                .test(text);
+                    // ОТБОЙ
+                    if (isOtboy) {
+                        if (isRocket) {
+                            if (post.id > state.lastRocketPost) {
+                                state.rocket = false;
+                                state.lastRocketPost = post.id;
+                            }
+                        } else if (isDrone) {
+                            if (post.id > state.lastDronePost) {
+                                state.drone = false;
+                                state.droneAlert = false;
+                                state.lastDronePost = post.id;
+                            }
+                        } else {
+                            if (post.id > state.lastRocketPost) {
+                                state.rocket = false;
+                                state.lastRocketPost = post.id;
+                            }
+                            if (post.id > state.lastDronePost) {
+                                state.drone = false;
+                                state.droneAlert = false;
+                                state.lastDronePost = post.id;
+                            }
+                        }
+                        continue;
+                    }
 
-            const isDrone =
-                /бпла|беспилот|дрон/i
-                .test(text);
-
-            for (const region of targetRegions) {
-
-                const state = newStatus[region];
-
-                if (!state) continue;
-
-                // ===== ОТБОЙ =====
-
-                if (isOtboy) {
+                    // ТРЕВОГА
+                    // Сначала проверяем особую тревогу по БПЛА (включается только если уже есть drone)
+                    if (isDroneAlert) {
+                        if (state.drone) {
+                            state.droneAlert = true;
+                        }
+                    }
 
                     if (isRocket) {
-
                         if (post.id > state.lastRocketPost) {
-
-                            state.rocket = false;
+                            state.rocket = true;
                             state.lastRocketPost = post.id;
-
                         }
+                    }
 
-                    } else if (isDrone) {
-
+                    if (isDrone) {
                         if (post.id > state.lastDronePost) {
-
-                            state.drone = false;
+                            state.drone = true;
+                            // droneAlert не сбрасываем, он может остаться от предыдущего сообщения,
+                            // но если новое сообщение просто "опасность БПЛА" без фиксации, то тревога сохраняется.
                             state.lastDronePost = post.id;
-
                         }
-
-                    } else {
-
-                        if (post.id > state.lastRocketPost) {
-
-                            state.rocket = false;
-                            state.lastRocketPost = post.id;
-
-                        }
-
-                        if (post.id > state.lastDronePost) {
-
-                            state.drone = false;
-                            state.lastDronePost = post.id;
-
-                        }
-                    }
-
-                    continue;
-                }
-
-                // ===== ТРЕВОГА =====
-
-                if (isRocket) {
-
-                    if (post.id > state.lastRocketPost) {
-
-                        state.rocket = true;
-                        state.lastRocketPost = post.id;
-
-                    }
-                }
-
-                if (isDrone) {
-
-                    if (post.id > state.lastDronePost) {
-
-                        state.drone = true;
-                        state.lastDronePost = post.id;
-
                     }
                 }
             }
+
+            // Обновляем глобальное состояние
+            regionStatus = {};
+            for (const region of Object.keys(newStatus)) {
+                regionStatus[region] = {
+                    drone: newStatus[region].drone,
+                    droneAlert: newStatus[region].droneAlert,
+                    rocket: newStatus[region].rocket
+                };
+            }
+
+            updateAllPolygons();
+            localStorage.setItem('alertCache', JSON.stringify(regionStatus));
+            statusDiv.innerHTML = '✅ Готово';
+            setTimeout(() => {
+                if (statusDiv.innerHTML === '✅ Готово') statusDiv.innerHTML = 'Актуально';
+            }, 1500);
+
+        } catch (err) {
+            console.error(err);
+            statusDiv.innerHTML = '⚠️ Ошибка';
+            setTimeout(() => {
+                if (statusDiv.innerHTML === '⚠️ Ошибка') statusDiv.innerHTML = 'Повторите';
+            }, 2000);
         }
-
-        // Обновляем глобальное состояние
-        regionStatus = {};
-
-        for (const region of Object.keys(newStatus)) {
-
-            regionStatus[region] = {
-
-                drone: newStatus[region].drone,
-                rocket: newStatus[region].rocket
-
-            };
-        }
-
-        updateAllPolygons();
-
-        localStorage.setItem(
-            'alertCache',
-            JSON.stringify(regionStatus)
-        );
-
-        statusDiv.innerHTML = '✅ Готово';
-
-        setTimeout(() => {
-
-            if (statusDiv.innerHTML === '✅ Готово') {
-                statusDiv.innerHTML = 'Актуально';
-            }
-
-        }, 1500);
-
-    } catch (err) {
-
-        console.error(err);
-
-        statusDiv.innerHTML = '⚠️ Ошибка';
-
-        setTimeout(() => {
-
-            if (statusDiv.innerHTML === '⚠️ Ошибка') {
-                statusDiv.innerHTML = 'Повторите';
-            }
-
-        }, 2000);
     }
-}
 
     // =========================== ЗАГРУЗКА ГРАНИЦ ===========================
     function loadPolygons() {
@@ -693,8 +573,10 @@
                 let name = feature.properties?.name || feature.properties?.NAME || feature.properties?.admin_name || "";
                 let fillColor = colors.clear;
                 if (regionStatus[name]) {
-                    if (regionStatus[name].rocket) fillColor = colors.rocket;
-                    else if (regionStatus[name].drone) fillColor = colors.drone;
+                    const { drone, droneAlert, rocket } = regionStatus[name];
+                    if (rocket) fillColor = colors.rocket;
+                    else if (droneAlert) fillColor = colors.droneAlert;
+                    else if (drone) fillColor = colors.drone;
                 }
                 return { color: "#fff", weight: 2.2, fillColor, fillOpacity: 0.7, smoothFactor: 0.5 };
             },
@@ -702,16 +584,16 @@
                 let name = f.properties?.name || f.properties?.NAME || f.properties?.admin_name || "";
                 if (name) {
                     layer.regionName = name;
-                    if (!regionStatus[name]) regionStatus[name] = { drone: false, rocket: false };
-                    const { drone, rocket } = regionStatus[name];
-                    layer.bindPopup(getPopupContent(name, drone, rocket), { className: 'custom-popup' });
+                    if (!regionStatus[name]) regionStatus[name] = { drone: false, droneAlert: false, rocket: false };
+                    const { drone, droneAlert, rocket } = regionStatus[name];
+                    layer.bindPopup(getPopupContent(name, drone, droneAlert, rocket), { className: 'custom-popup' });
                 }
             }
         }).addTo(map);
         
         polygonsLayer.eachLayer(layer => {
             if (layer.regionName && !regionStatus[layer.regionName]) {
-                regionStatus[layer.regionName] = { drone: false, rocket: false };
+                regionStatus[layer.regionName] = { drone: false, droneAlert: false, rocket: false };
             }
         });
         
@@ -744,8 +626,9 @@
         try {
             const saved = JSON.parse(cached);
             for (let reg in saved) {
-                if (!regionStatus[reg]) regionStatus[reg] = { drone: false, rocket: false };
+                if (!regionStatus[reg]) regionStatus[reg] = { drone: false, droneAlert: false, rocket: false };
                 regionStatus[reg].drone = saved[reg].drone || false;
+                regionStatus[reg].droneAlert = saved[reg].droneAlert || false;
                 regionStatus[reg].rocket = saved[reg].rocket || false;
             }
         } catch(e) {}
