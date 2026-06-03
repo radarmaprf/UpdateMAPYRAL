@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Air Alert Map — vrv_radar + locatorru + bplarussiaru</title>
+    <title>Air Alert Map — locatorru + bplarussiaru</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -403,9 +403,8 @@
     };
     const allRegionNames = Object.keys(regionAliases);
 
-    // =========================== ТРИ КАНАЛА ===========================
+    // =========================== ДВА КАНАЛА (vrv_radar УДАЛЁН) ===========================
     const channels = [
-        { name: "vrv_radar", url: "https://t.me/s/vrv_radar" },
         { name: "locatorru", url: "https://t.me/s/locatorru" },
         { name: "bplarussiaru", url: "https://t.me/s/bplarussiaru" }
     ];
@@ -474,7 +473,7 @@
             allPosts.push(...posts);
         }
         allPosts.sort((a, b) => b.timestamp - a.timestamp);
-        console.log(`Всего постов с трёх каналов: ${allPosts.length}`);
+        console.log(`Всего постов с двух каналов: ${allPosts.length}`);
         return allPosts;
     }
 
