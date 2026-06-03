@@ -479,39 +479,202 @@
 
     // Основная функция обновления – последовательно обрабатывает все посты
     async function refreshAlerts() {
-        const statusDiv = document.getElementById('status');
-        statusDiv.innerHTML = '🔄 Обновление...';
-        try {
-            const posts = await parseTelegramAlerts();
-            if (posts.length === 0) throw new Error("Нет постов");
-            
-            // Временно создаём новую копию текущего состояния, чтобы применить все изменения последовательно
-            const newStatus = JSON.parse(JSON.stringify(regionStatus));
-            
-            for (const post of posts) {
-                const text = post.text;
-                const regions = extractRegions(text, allRegionNames);
-                if (regions.length === 0) continue;
-                
-                const event = classifyEvent(text);
-                if (!event) continue;
-                
-                applyEvent(regions, event, newStatus);
-                console.log(`Пост ${post.id}: ${event.type} ${event.danger} для [${regions.join(', ')}]`);
+
+    const statusDiv = document.getElementById('status');
+    statusDiv.innerHTML = '🔄 Обновление...';
+
+    try {
+
+        const posts = await parseTelegramAlerts();
+
+        // Полный пересчёт состояния
+        const newStatus = {};
+
+        allRegionNames.forEach(region => {
+            newStatus[region] = {
+                drone: false,
+                rocket: false,
+                lastDronePost: 0,
+                lastRocketPost: 0
+            };
+        });
+
+        const sortedPosts = [...posts]
+            .sort((a, b) => a.id - b.id);
+
+        for (const post of sortedPosts) {
+
+            const text = post.text
+                .replace(/\s+/g, ' ')
+                .trim()
+                .toLowerCase();
+
+            const isAllRegions =
+                /все регионы|по всей россии|по всем регионам|всех регионах|везде/i
+                .test(text);
+
+            let matchedRegions = new Set();
+
+            if (!isAllRegions) {
+
+                for (const [official, aliases] of Object.entries(regionAliases)) {
+
+                    const found = aliases.some(alias => {
+
+                        const escaped =
+                            alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+                        return new RegExp(
+                            `(^|\\s|\\b)${escaped}(\\s|\\b|$)`,
+                            'i'
+                        ).test(text);
+
+                    });
+
+                    if (found) {
+                        matchedRegions.add(official);
+                    }
+                }
             }
-            
-            // Применяем обновлённые статусы
-            regionStatus = newStatus;
-            updateAllPolygons();
-            localStorage.setItem("alertCache", JSON.stringify(regionStatus));
-            statusDiv.innerHTML = '✅ Готово';
-            setTimeout(() => { if (statusDiv.innerHTML === '✅ Готово') statusDiv.innerHTML = 'Актуально'; }, 1500);
-        } catch(err) {
-            console.error(err);
-            statusDiv.innerHTML = '⚠️ Ошибка';
-            setTimeout(() => { if (statusDiv.innerHTML === '⚠️ Ошибка') statusDiv.innerHTML = 'Повторите'; }, 2000);
+
+            const targetRegions =
+                isAllRegions
+                    ? allRegionNames
+                    : [...matchedRegions];
+
+            if (!targetRegions.length) {
+                continue;
+            }
+
+            const isOtboy =
+                /отбой|снята|завершена|отменена|угроза снята|нет угрозы/i
+                .test(text);
+
+            const isRocket =
+                /ракетн|баллистическ|крылат.*ракет/i
+                .test(text);
+
+            const isDrone =
+                /бпла|беспилот|дрон/i
+                .test(text);
+
+            for (const region of targetRegions) {
+
+                const state = newStatus[region];
+
+                if (!state) continue;
+
+                // ===== ОТБОЙ =====
+
+                if (isOtboy) {
+
+                    if (isRocket) {
+
+                        if (post.id > state.lastRocketPost) {
+
+                            state.rocket = false;
+                            state.lastRocketPost = post.id;
+
+                        }
+
+                    } else if (isDrone) {
+
+                        if (post.id > state.lastDronePost) {
+
+                            state.drone = false;
+                            state.lastDronePost = post.id;
+
+                        }
+
+                    } else {
+
+                        if (post.id > state.lastRocketPost) {
+
+                            state.rocket = false;
+                            state.lastRocketPost = post.id;
+
+                        }
+
+                        if (post.id > state.lastDronePost) {
+
+                            state.drone = false;
+                            state.lastDronePost = post.id;
+
+                        }
+                    }
+
+                    continue;
+                }
+
+                // ===== ТРЕВОГА =====
+
+                if (isRocket) {
+
+                    if (post.id > state.lastRocketPost) {
+
+                        state.rocket = true;
+                        state.lastRocketPost = post.id;
+
+                    }
+                }
+
+                if (isDrone) {
+
+                    if (post.id > state.lastDronePost) {
+
+                        state.drone = true;
+                        state.lastDronePost = post.id;
+
+                    }
+                }
+            }
         }
+
+        // Обновляем глобальное состояние
+        regionStatus = {};
+
+        for (const region of Object.keys(newStatus)) {
+
+            regionStatus[region] = {
+
+                drone: newStatus[region].drone,
+                rocket: newStatus[region].rocket
+
+            };
+        }
+
+        updateAllPolygons();
+
+        localStorage.setItem(
+            'alertCache',
+            JSON.stringify(regionStatus)
+        );
+
+        statusDiv.innerHTML = '✅ Готово';
+
+        setTimeout(() => {
+
+            if (statusDiv.innerHTML === '✅ Готово') {
+                statusDiv.innerHTML = 'Актуально';
+            }
+
+        }, 1500);
+
+    } catch (err) {
+
+        console.error(err);
+
+        statusDiv.innerHTML = '⚠️ Ошибка';
+
+        setTimeout(() => {
+
+            if (statusDiv.innerHTML === '⚠️ Ошибка') {
+                statusDiv.innerHTML = 'Повторите';
+            }
+
+        }, 2000);
     }
+}
 
     // =========================== ЗАГРУЗКА ГРАНИЦ ===========================
     function loadPolygons() {
