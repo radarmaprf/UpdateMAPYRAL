@@ -336,7 +336,6 @@
     };
 
     // ========== ПАРСИНГ TELEGRAM ==========
-    // Рабочие прокси (обновлённые)
     const proxies = [
         "https://api.allorigins.win/raw?url=",
         "https://corsproxy.io/?",
@@ -365,7 +364,6 @@
         throw new Error("Не удалось загрузить данные ни через один прокси");
     }
 
-    // Парсинг сообщений и обновление флагов
     async function parseTelegramAndUpdateFlags() {
         const channel = "https://t.me/s/locatorru";
         let html = null;
@@ -427,7 +425,11 @@
             }
 
             for (const reg of matchedRegions) {
-                const old = regionFlags[reg] || { drone: false, rocket: false, lastId: 0 };
+                // Инициализация, если ещё нет
+                if (!regionFlags[reg]) {
+                    regionFlags[reg] = { drone: false, rocket: false, lastId: 0 };
+                }
+                const old = regionFlags[reg];
                 let newDrone = old.drone;
                 let newRocket = old.rocket;
                 if (setDrone !== null) newDrone = setDrone;
