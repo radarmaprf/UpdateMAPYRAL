@@ -275,21 +275,47 @@
         `).join('');
     }
 
+    // Функция получения текущей даты и времени для вставки в копируемый текст
+    function getCurrentDateTimeString() {
+        const now = new Date();
+        const day = now.getDate().toString().padStart(2,'0');
+        const month = (now.getMonth()+1).toString().padStart(2,'0');
+        const year = now.getFullYear();
+        const hours = now.getHours().toString().padStart(2,'0');
+        const minutes = now.getMinutes().toString().padStart(2,'0');
+        return `${day}.${month}.${year} ${hours}:${minutes}`;
+    }
+
     async function copyAlertsList() {
+        // Собираем активные тревоги с приоритетами (как в панели)
         const active = [];
         for (const [region, flags] of Object.entries(regionStatus)) {
-            if (flags.rocket) active.push(`🟤 ${region} — Ракетная опасность`);
-            else if (flags.droneAlert) active.push(`🔴 ${region} — Тревога БПЛА (фиксация/работа ПВО)`);
-            else if (flags.droneDanger) active.push(`🟡 ${region} — Опасность БПЛА`);
+            if (flags.rocket) {
+                active.push({ name: region, label: '🟤 Ракетная опасность', priority: 1 });
+            } else if (flags.droneAlert) {
+                active.push({ name: region, label: '🔴 Тревога БПЛА (фиксация/работа ПВО)', priority: 2 });
+            } else if (flags.droneDanger) {
+                active.push({ name: region, label: '🟡 Опасность БПЛА', priority: 3 });
+            }
         }
+        
         if (active.length === 0) {
             showToast("✨ Нет активных тревог для копирования");
             return;
         }
-        const textToCopy = active.join('\n');
+        
+        // Сортируем: сначала ракетные (priority 1), потом тревоги БПЛА (2), потом опасность БПЛА (3)
+        active.sort((a,b) => a.priority - b.priority);
+        
+        // Формируем строки
+        const lines = active.map(item => `${item.label}: ${item.name}`);
+        const dateTimeStr = getCurrentDateTimeString();
+        const header = `📅 Активные тревоги на ${dateTimeStr}`;
+        const textToCopy = [header, ...lines].join('\n');
+        
         try {
             await navigator.clipboard.writeText(textToCopy);
-            showToast(`📋 Скопировано ${active.length} тревог`);
+            showToast(`📋 Скопировано ${active.length} тревог (с датой/временем)`);
         } catch {
             const textarea = document.createElement('textarea');
             textarea.value = textToCopy;
@@ -297,7 +323,7 @@
             textarea.select();
             document.execCommand('copy');
             document.body.removeChild(textarea);
-            showToast(`📋 Скопировано ${active.length} тревог`);
+            showToast(`📋 Скопировано ${active.length} тревог (с датой/временем)`);
         }
     }
 
@@ -442,7 +468,6 @@
         return Array.from(found);
     }
 
-    // Возвращает { type, danger, isFixation? }
     function classifyEvent(text) {
         const lower = text;
         const isRocket = /ракетн(?:ая|ую|ой|ая)\s*(?:опасность|тревога)|баллистическ(?:ая|ую)|крылат(?:ая|ую)/i.test(lower);
@@ -459,12 +484,9 @@
             return { type: 'cancel', danger: 'both' };
         }
         
-        // Если есть ракетная угроза (высший приоритет)
         if (isRocket) return { type: 'alert', danger: 'rocket' };
         
-        // Обработка БПЛА: отдельно фиксация (тревога) и просто опасность
         if (isFixation) {
-            // Тревога БПЛА включается ТОЛЬКО если в регионе уже есть droneDanger (проверка позже)
             return { type: 'droneAlert', danger: 'drone' };
         }
         
@@ -485,12 +507,9 @@
                     st.rocketDanger = true;
                 } else if (event.danger === 'drone') {
                     st.droneDanger = true;
-                    // При появлении опасности БПЛА тревога НЕ сбрасывается, но может остаться старая.
-                    // Новая тревога будет установлена отдельным событием fixation
                 }
             } 
             else if (event.type === 'droneAlert') {
-                // Тревога БПЛА (фиксация/работа ПВО) - включаем только если уже есть droneDanger
                 if (st.droneDanger) {
                     st.droneAlert = true;
                 }
@@ -500,7 +519,7 @@
                     st.rocketDanger = false;
                 } else if (event.danger === 'drone') {
                     st.droneDanger = false;
-                    st.droneAlert = false;   // отмена опасности снимает и тревогу
+                    st.droneAlert = false;
                 } else if (event.danger === 'both') {
                     st.rocketDanger = false;
                     st.droneDanger = false;
