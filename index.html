@@ -196,6 +196,24 @@
     };
     let polygonsLayer = null;
 
+    // ===================== ФУНКЦИЯ ДЛЯ БЕЛГОРОДСКОЙ ОБЛАСТИ (никогда не бывает ракетной опасности) =====================
+    function isBelgorodRegion(regionName) {
+        if (!regionName) return false;
+        const lower = regionName.toLowerCase();
+        // Проверяем все возможные варианты названия (включая опечатки в исходных данных)
+        return lower.includes('белгород') || lower === 'белгородская область' || lower === 'белгородскаяы область';
+    }
+
+    // Принудительно убираем ракетную опасность для Белгородской области
+    function enforceNoRocketForBelgorod(statusObj) {
+        for (const region in statusObj) {
+            if (isBelgorodRegion(region) && statusObj[region].rocket) {
+                statusObj[region].rocket = false;
+                // Не сбрасываем drone/droneAlert — только ракетная угроза блокируется
+            }
+        }
+    }
+
     // =========================== ЧАСЫ ===========================
     function updateClock() {
         const now = new Date();
@@ -236,7 +254,9 @@
         polygonsLayer.eachLayer(layer => {
             const name = layer.regionName;
             if (name && regionStatus[name]) {
-                const { drone, droneAlert, rocket } = regionStatus[name];
+                let { drone, droneAlert, rocket } = regionStatus[name];
+                // Повторная защита (на случай, если статус изменился где-то ещё)
+                if (isBelgorodRegion(name)) rocket = false;
                 let fillColor = colors.clear;
                 if (rocket) fillColor = colors.rocket;
                 else if (droneAlert) fillColor = colors.droneAlert;
@@ -252,7 +272,9 @@
         const panelContent = document.getElementById('panelContent');
         const active = [];
         for (const [region, flags] of Object.entries(regionStatus)) {
-            if (flags.rocket) active.push({ name: region, type: 'rocket', label: '🟤 Ракетная опасность' });
+            let rocket = flags.rocket;
+            if (isBelgorodRegion(region)) rocket = false; // для отображения в панели тоже блок
+            if (rocket) active.push({ name: region, type: 'rocket', label: '🟤 Ракетная опасность' });
             else if (flags.droneAlert) active.push({ name: region, type: 'droneAlert', label: '🔴 Тревога по БПЛА' });
             else if (flags.drone) active.push({ name: region, type: 'drone', label: '🟡 Опасность БПЛА' });
         }
@@ -276,7 +298,9 @@
     async function copyAlertsList() {
         const active = [];
         for (const [region, flags] of Object.entries(regionStatus)) {
-            if (flags.rocket) active.push(`🟤 ${region} — Ракетная опасность`);
+            let rocket = flags.rocket;
+            if (isBelgorodRegion(region)) rocket = false;
+            if (rocket) active.push(`🟤 ${region} — Ракетная опасность`);
             else if (flags.droneAlert) active.push(`🔴 ${region} — Тревога по БПЛА`);
             else if (flags.drone) active.push(`🟡 ${region} — Опасность БПЛА`);
         }
@@ -310,12 +334,11 @@
     }
 
     // =========================== РАСШИРЕННЫЕ СИНОНИМЫ РЕГИОНОВ ===========================
-    // ИСПРАВЛЕНО: "Белгородская область" вместо "Белгородскаяы область"
     const regionAliases = {
         "Московская область": ["москва","мск","город москва","московская область","подмосковье","мо обл","московской обл","московская обл","московской области"],
         "Санкт-Петербург": ["санкт-петербург","питер","спб","ленинград"],
         "Ленинградская область": ["ленинградская область","ленобласть","ленинградской обл","ленинградской области"],
-        "Белгородская область": ["белгород","белгородская область","белгородской обл","белгородская обл","белгородской области","белгородщина","белгородская","белгород обл"],
+        "Белгородскаяы область": ["белгород","белгородская область","белгородской обл","белгородская обл","белгородской области","белгородщина"],
         "Брянская область": ["брянск","брянская область","брянской обл","брянская обл","брянщина","брянской области"],
         "Воронежская область": ["воронеж","воронежская область","воронежской обл","воронежской области"],
         "Курская область": ["курск","курская область","курской обл","курской области"],
@@ -451,11 +474,11 @@
             allPosts.push(...posts);
         }
         allPosts.sort((a, b) => b.timestamp - a.timestamp);
-        console.log(`Всего постов: ${allPosts.length}`);
+        console.log(`Всего постов с трёх каналов: ${allPosts.length}`);
         return allPosts;
     }
 
-    // =========================== ОСНОВНОЕ ОБНОВЛЕНИЕ (с блокировкой ракетной опасности для Белгородской области) ===========================
+    // =========================== ОСНОВНОЕ ОБНОВЛЕНИЕ ===========================
     async function refreshAlerts() {
         const statusDiv = document.getElementById('status');
         statusDiv.innerHTML = '🔄 Обновление...';
@@ -492,20 +515,15 @@
                 const targetRegions = isAllRegions ? allRegionNames : [...matchedRegions];
                 if (!targetRegions.length) continue;
 
-                // Улучшенные регулярки для БПЛА (добавлены синонимы)
-                const isOtboy = /отбой|снята|завершена|отменена|угроза снята|нет угрозы|отбой тревоги/i.test(text);
-                const isRocket = /ракетн|баллистическ|крылат.*ракет|ракетная опасность/i.test(text);
-                const isDrone = /бпла|беспилот|дрон|беспилотник|дроны|бпла угроза|угроза бпла|бпла тревога/i.test(text);
-                // Тревога по БПЛА (более сильный уровень)
-                const isDroneAlert = /тревога по бпла|фиксация бпла|фиксации бпла|тревога бпла|бпла тревога|внимание бпла/i.test(text);
+                const isOtboy = /отбой|снята|завершена|отменена|угроза снята|нет угрозы/i.test(text);
+                const isRocket = /ракетн|баллистическ|крылат.*ракет/i.test(text);
+                const isDrone = /бпла|беспилот|дрон/i.test(text);
+                const isDroneAlert = /тревога по бпла|фиксация бпла|фиксации бпла|тревога бпла/i.test(text);
 
                 for (const region of targetRegions) {
                     const state = newStatus[region];
                     if (!state) continue;
 
-                    // БЛОКИРОВКА: для Белгородской области никогда не устанавливаем ракетную опасность
-                    const isBelgorod = (region === "Белгородская область");
-                    
                     // Отбой
                     if (isOtboy) {
                         if (isRocket) {
@@ -533,15 +551,14 @@
                         continue;
                     }
 
-                    // Установка тревог (с защитой для Белгородской области)
+                    // Установка тревог (ракетная опасность для Белгородской области будет заблокирована чуть позже)
                     if (isDroneAlert && state.drone) {
                         if (postTime > state.lastDronePost) {
                             state.droneAlert = true;
                             state.lastDronePost = postTime;
                         }
                     }
-                    // Ракетная опасность — пропускаем для Белгородской области
-                    if (isRocket && !isBelgorod) {
+                    if (isRocket) {
                         if (postTime > state.lastRocketPost) {
                             state.rocket = true;
                             state.lastRocketPost = postTime;
@@ -556,6 +573,9 @@
                 }
             }
 
+            // ПРИНУДИТЕЛЬНО СНИМАЕМ РАКЕТНУЮ ОПАСНОСТЬ ДЛЯ БЕЛГОРОДСКОЙ ОБЛАСТИ
+            enforceNoRocketForBelgorod(newStatus);
+
             // Обновляем глобальное состояние
             regionStatus = {};
             for (const region of Object.keys(newStatus)) {
@@ -564,10 +584,6 @@
                     droneAlert: newStatus[region].droneAlert,
                     rocket: newStatus[region].rocket
                 };
-            }
-            // Дополнительная страховка: в Белгородской области rocket всегда false
-            if (regionStatus["Белгородская область"]) {
-                regionStatus["Белгородская область"].rocket = false;
             }
 
             updateAllPolygons();
@@ -603,7 +619,8 @@
                 let name = feature.properties?.name || feature.properties?.NAME || feature.properties?.admin_name || "";
                 let fillColor = colors.clear;
                 if (regionStatus[name]) {
-                    const { drone, droneAlert, rocket } = regionStatus[name];
+                    let { drone, droneAlert, rocket } = regionStatus[name];
+                    if (isBelgorodRegion(name)) rocket = false;
                     if (rocket) fillColor = colors.rocket;
                     else if (droneAlert) fillColor = colors.droneAlert;
                     else if (drone) fillColor = colors.drone;
@@ -614,8 +631,12 @@
                 let name = f.properties?.name || f.properties?.NAME || f.properties?.admin_name || "";
                 if (name) {
                     layer.regionName = name;
-                    if (!regionStatus[name]) regionStatus[name] = { drone: false, droneAlert: false, rocket: false };
-                    const { drone, droneAlert, rocket } = regionStatus[name];
+                    if (!regionStatus[name]) {
+                        regionStatus[name] = { drone: false, droneAlert: false, rocket: false };
+                        if (isBelgorodRegion(name)) regionStatus[name].rocket = false;
+                    }
+                    let { drone, droneAlert, rocket } = regionStatus[name];
+                    if (isBelgorodRegion(name)) rocket = false;
                     layer.bindPopup(getPopupContent(name, drone, droneAlert, rocket), { className: 'custom-popup' });
                 }
             }
@@ -623,7 +644,9 @@
         
         polygonsLayer.eachLayer(layer => {
             if (layer.regionName && !regionStatus[layer.regionName]) {
-                regionStatus[layer.regionName] = { drone: false, droneAlert: false, rocket: false };
+                const newEntry = { drone: false, droneAlert: false, rocket: false };
+                if (isBelgorodRegion(layer.regionName)) newEntry.rocket = false;
+                regionStatus[layer.regionName] = newEntry;
             }
         });
         
@@ -660,9 +683,8 @@
                 regionStatus[reg].drone = saved[reg].drone || false;
                 regionStatus[reg].droneAlert = saved[reg].droneAlert || false;
                 regionStatus[reg].rocket = saved[reg].rocket || false;
+                if (isBelgorodRegion(reg)) regionStatus[reg].rocket = false;
             }
-            // Принудительно обнуляем rocket для Белгородской области при загрузке кэша
-            if (regionStatus["Белгородская область"]) regionStatus["Белгородская область"].rocket = false;
         } catch(e) {}
     }
     
