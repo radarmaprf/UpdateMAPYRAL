@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Air Alert Map — vrv_radar + locatorru</title>
+    <title>Air Alert Map — vrv_radar + locatorru + bplarussiaru</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -379,10 +379,11 @@
     };
     const allRegionNames = Object.keys(regionAliases);
 
-    // =========================== ДВА КАНАЛА: vrv_radar + locatorru ===========================
+    // =========================== ТРИ КАНАЛА: vrv_radar + locatorru + bplarussiaru ===========================
     const channels = [
         { name: "vrv_radar", url: "https://t.me/s/vrv_radar" },
-        { name: "locatorru", url: "https://t.me/s/locatorru" }
+        { name: "locatorru", url: "https://t.me/s/locatorru" },
+        { name: "bplarussiaru", url: "https://t.me/s/bplarussiaru" }
     ];
     const proxies = [
         "https://api.allorigins.win/raw?url=",
@@ -416,9 +417,9 @@
         }
         if (!html) return [];
 
-        // Регулярка для извлечения ID, текста и времени
-        // Пример: data-post="vrv_radar/1234" ... <time datetime="2025-01-15T12:34:56+00:00">
-        const postRegex = /data-post="[^"]+\/(\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\/div>.*?<time datetime="([^"]+)"/gis;
+        // Для bplarussiaru формат data-post="/bplarussiaru/1234", а для других data-post="vrv_radar/1234"
+        // Используем универсальный regex с захватом имени канала
+        const postRegex = /data-post="(?:[^"]+\/)?(\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\/div>.*?<time datetime="([^"]+)"/gis;
         const posts = [];
         let m;
         while ((m = postRegex.exec(html)) !== null) {
@@ -433,7 +434,7 @@
         }
         // Если не удалось извлечь время (старый формат), используем ID как fallback
         if (posts.length === 0) {
-            const fallbackRegex = /data-post="[^"]+\/(\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\/div>/gis;
+            const fallbackRegex = /data-post="(?:[^"]+\/)?(\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\/div>/gis;
             while ((m = fallbackRegex.exec(html)) !== null) {
                 let id = parseInt(m[1]);
                 let text = m[2].replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -446,7 +447,7 @@
         return posts;
     }
 
-    // Получение всех постов с двух каналов, объединённых и отсортированных по времени (новые первыми)
+    // Получение всех постов с трёх каналов, объединённых и отсортированных по времени (новые первыми)
     async function getAllPosts() {
         const allPosts = [];
         for (const channel of channels) {
@@ -455,7 +456,7 @@
         }
         // Сортируем по timestamp (по убыванию: свежие выше)
         allPosts.sort((a, b) => b.timestamp - a.timestamp);
-        console.log(`Всего постов с двух каналов: ${allPosts.length}`);
+        console.log(`Всего постов с трёх каналов: ${allPosts.length}`);
         return allPosts;
     }
 
@@ -481,7 +482,6 @@
             // Обрабатываем посты в порядке убывания времени (свежие первыми)
             for (const post of posts) {
                 const text = post.text;
-                const postId = post.id;
                 const postTime = post.timestamp;
 
                 const isAllRegions = /все регионы|по всей россии|по всем регионам|всех регионах|везде/i.test(text);
