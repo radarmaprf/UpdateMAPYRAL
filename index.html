@@ -187,7 +187,7 @@
     const IGNORED_REGIONS = ["Архангельская область"];
     
     // ===========================================
-    // 1. ОТОБРАЖАЕМЫЕ НАЗВАНИЯ (короткие, удобные для пользователя)
+    // 1. ОТОБРАЖАЕМЫЕ НАЗВАНИЯ
     // ===========================================
     const displayNames = {
         "Чувашская Республика": "Чувашия",
@@ -231,7 +231,7 @@
     }
     
     // ===========================================
-    // 2. ИНИЦИАЛИЗАЦИЯ КАРТЫ И ОБЩИХ ДАННЫХ
+    // 2. КАРТА
     // ===========================================
     const map = L.map('map').setView([61, 95], 4.2);
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
@@ -243,7 +243,7 @@
     let polygonsLayer = null;
 
     // ===========================================
-    // 3. ИНСТРУМЕНТ ЛИНЕЙКИ
+    // 3. ЛИНЕЙКА
     // ===========================================
     let rulerModeActive = false;
     let points = [];
@@ -355,7 +355,7 @@
     }
     
     // ===========================================
-    // 4. ЧАСЫ И ФОРМАТИРОВАНИЕ
+    // 4. ЧАСЫ И ПОПАПЫ
     // ===========================================
     function updateClock() {
         const now = new Date();
@@ -382,7 +382,7 @@
     }
     
     // ===========================================
-    // 5. ОБНОВЛЕНИЕ ПОЛИГОНОВ
+    // 5. ОБНОВЛЕНИЕ КАРТЫ И ПАНЕЛИ
     // ===========================================
     function updateAllPolygons() {
         if (!polygonsLayer) return;
@@ -410,9 +410,6 @@
         updateAlertsPanel();
     }
     
-    // ===========================================
-    // 6. ПАНЕЛЬ СПИСКА ТРЕВОГ + КОПИРОВАНИЕ
-    // ===========================================
     function getActiveAlertsList() {
         const active = [];
         for (const [name, flags] of Object.entries(regionStatus)) {
@@ -478,7 +475,7 @@
     }
     
     // ===========================================
-    // 7. ПАРСИНГ TELEGRAM
+    // 6. ПАРСИНГ TELEGRAM (УЛУЧШЕННЫЙ, С ГЛУБОКОЙ ДОЗАГРУЗКОЙ)
     // ===========================================
     const regionAliases = {
         "Москва": ["москва","мск","город москва","московская область","подмосковье","мо обл","московской обл","московская обл"],
@@ -548,82 +545,146 @@
         "Чукотский АО": ["чукотка","анадырь"]
     };
     
-    async function fetchWithProxy(url) {
+    // Функция извлечения регионов из текста с учётом перечислений
+    function extractRegionsFromText(text, regionMap) {
+        const found = new Set();
+        // Проверяем каждое официальное название по ключевым словам
+        for (const [official, keywords] of Object.entries(regionMap)) {
+            if (keywords.some(kw => text.includes(kw))) {
+                found.add(official);
+            }
+        }
+        return Array.from(found);
+    }
+    
+    async function fetchWithProxy(url, retries = 2) {
         const proxies = ["https://api.allorigins.win/raw?url=", "https://corsproxy.io/?", "https://cors-anywhere.herokuapp.com/"];
         for (let proxy of proxies) {
-            try {
-                const res = await fetch(proxy + encodeURIComponent(url), { signal: AbortSignal.timeout(8000) });
-                if (res.ok) {
-                    const txt = await res.text();
-                    if (txt && txt.length > 2000) return txt;
-                }
-            } catch(e) {}
+            for (let attempt = 0; attempt < retries; attempt++) {
+                try {
+                    const res = await fetch(proxy + encodeURIComponent(url), { signal: AbortSignal.timeout(10000) });
+                    if (res.ok) {
+                        const txt = await res.text();
+                        if (txt && txt.length > 2000) return txt;
+                    }
+                } catch(e) {}
+            }
         }
-        throw new Error("Нет прокси");
+        throw new Error("Нет данных после всех прокси");
     }
     
     async function refreshAlerts() {
         const statusDiv = document.getElementById('status');
-        statusDiv.innerHTML = '🔄 Обновление...';
+        statusDiv.innerHTML = '🔄 Обновление (загрузка сообщений)...';
         try {
-            let html = null;
-            try {
-                html = await fetchWithProxy("https://t.me/s/locatorru");
-            } catch(e) {
-                html = await fetchWithProxy("https://t.me/s/radarrussiia");
+            // Пытаемся загрузить несколько страниц канала, чтобы охватить больше сообщений
+            let allHtml = '';
+            let nextUrl = "https://t.me/s/locatorru";
+            let loadedPages = 0;
+            const maxPages = 5; // загружаем до 5 страниц (около 100+ сообщений)
+            let oldestPostId = null;
+            
+            for (let page = 0; page < maxPages; page++) {
+                const html = await fetchWithProxy(nextUrl);
+                allHtml += html;
+                // Извлекаем ID постов, чтобы узнать самый старый
+                const ids = [...html.matchAll(/data-post="locatorru\/(\d+)"/g)].map(m => parseInt(m[1]));
+                if (ids.length === 0) break;
+                const minId = Math.min(...ids);
+                if (oldestPostId === minId) break; // достигли конца
+                oldestPostId = minId;
+                nextUrl = `https://t.me/s/locatorru?before=${oldestPostId}`;
+                loadedPages++;
+                // Небольшая пауза, чтобы не забанили
+                await new Promise(r => setTimeout(r, 300));
             }
-            if (!html) throw new Error("Нет данных");
+            
+            // Если locatorru не дал результатов, пробуем radarrussiia
+            if (allHtml.length < 5000) {
+                nextUrl = "https://t.me/s/radarrussiia";
+                for (let page = 0; page < maxPages; page++) {
+                    const html = await fetchWithProxy(nextUrl);
+                    allHtml += html;
+                    const ids = [...html.matchAll(/data-post="radarrussiia\/(\d+)"/g)].map(m => parseInt(m[1]));
+                    if (ids.length === 0) break;
+                    const minId = Math.min(...ids);
+                    if (oldestPostId === minId) break;
+                    oldestPostId = minId;
+                    nextUrl = `https://t.me/s/radarrussiia?before=${oldestPostId}`;
+                    await new Promise(r => setTimeout(r, 300));
+                }
+            }
+            
+            if (!allHtml) throw new Error("Нет данных");
+            
+            // Регулярка для извлечения постов из обоих каналов
             const regex = /data-post="(?:locatorru|radarrussiia)\/(\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\/div>/gis;
             let posts = [];
             let m;
-            while ((m = regex.exec(html)) !== null) {
-                posts.push({ id: parseInt(m[1]), text: m[2].replace(/<[^>]*>/g, ' ').toLowerCase() });
+            while ((m = regex.exec(allHtml)) !== null) {
+                posts.push({
+                    id: parseInt(m[1]),
+                    text: m[2].replace(/<[^>]*>/g, ' ').toLowerCase()
+                });
             }
+            // Уникальные посты по id (если дублируются из-за двух каналов)
+            const unique = new Map();
+            for (const p of posts) {
+                if (!unique.has(p.id) || p.id > unique.get(p.id).id) unique.set(p.id, p);
+            }
+            posts = Array.from(unique.values());
             posts.sort((a,b) => b.id - a.id);
-            const fresh = posts.slice(0, 40);
+            
+            console.log(`Загружено ${posts.length} уникальных сообщений`);
+            statusDiv.innerHTML = `🔄 Обработка ${posts.length} сообщений...`;
+            
             const newStatus = JSON.parse(JSON.stringify(regionStatus));
-            for (let post of fresh) {
+            
+            for (let post of posts) {
                 const text = post.text;
                 if (/все регионы|по всей россии/i.test(text)) continue;
                 
-                let matched = [];
-                for (const [official, keys] of Object.entries(regionAliases)) {
-                    if (keys.some(kw => text.includes(kw))) matched.push(official);
-                }
+                // Извлекаем регионы из текста
+                const matched = extractRegionsFromText(text, regionAliases);
                 if (matched.length === 0) continue;
                 
-                const isOtboy = /отбой|снята/i.test(text);
+                const isOtboy = /отбой|снята|отбой опасности/i.test(text);
                 const isRocket = /ракетная опасность|ракетная тревога/i.test(text);
-                const isDrone = /бпла|беспилот/i.test(text);
+                const isDrone = /бпла|беспилот|угроза бпла/i.test(text);
+                
                 for (let reg of matched) {
                     if (IGNORED_REGIONS.includes(reg)) continue;
                     if (!newStatus[reg]) newStatus[reg] = { drone: false, rocket: false };
+                    
                     if (isOtboy) {
-                        if (isRocket) newStatus[reg].rocket = false;
-                        else if (isDrone) newStatus[reg].drone = false;
-                        else { newStatus[reg].drone = false; newStatus[reg].rocket = false; }
+                        // Отбой: сбрасываем оба флага (или только соответствующий, но безопаснее сбросить оба)
+                        newStatus[reg].drone = false;
+                        newStatus[reg].rocket = false;
                     } else {
                         if (isRocket) newStatus[reg].rocket = true;
                         else if (isDrone) newStatus[reg].drone = true;
                     }
                 }
             }
+            
+            // Принудительно обнуляем игнорируемый регион
             for (let ignored of IGNORED_REGIONS) {
                 newStatus[ignored] = { drone: false, rocket: false };
             }
+            
             regionStatus = newStatus;
             updateAllPolygons();
             localStorage.setItem("alertCache", JSON.stringify(regionStatus));
             statusDiv.innerHTML = '✅ Готово';
-            setTimeout(() => statusDiv.innerHTML = 'Актуально', 1500);
+            setTimeout(() => statusDiv.innerHTML = 'Актуально', 2000);
         } catch(err) {
             console.error(err);
-            statusDiv.innerHTML = '⚠️ Ошибка';
+            statusDiv.innerHTML = '⚠️ Ошибка обновления';
         }
     }
     
     // ===========================================
-    // 8. ЗАГРУЗКА ГРАНИЦ РЕГИОНОВ
+    // 7. ЗАГРУЗКА ГРАНИЦ
     // ===========================================
     function loadPolygons() {
         const url = "https://raw.githubusercontent.com/azatkh/ru-regions-geojson/main/regions.geojson";
@@ -677,7 +738,7 @@
     }
     
     // ===========================================
-    // 9. ИНИЦИАЛИЗАЦИЯ И СОБЫТИЯ
+    // 8. ИНИЦИАЛИЗАЦИЯ
     // ===========================================
     const cached = localStorage.getItem("alertCache");
     if (cached) {
@@ -691,7 +752,7 @@
     loadPolygons();
     setTimeout(() => {
         refreshAlerts();
-        setInterval(refreshAlerts, 35000);
+        setInterval(refreshAlerts, 45000); // обновление каждые 45 секунд
     }, 2000);
     
     document.getElementById('updateBtn').addEventListener('click', () => refreshAlerts());
