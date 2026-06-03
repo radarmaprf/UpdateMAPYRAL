@@ -470,7 +470,7 @@
 
                 const isOtboy = /отбой|снята|завершена|отменена|угроза снята|нет угрозы/i.test(text);
                 const isRocket = /ракетн|баллистическ|крылат.*ракет/i.test(text);
-                const isDrone = /опасность по бпла|беспилот|дрон/i.test(text);
+                const isDrone = /опасность по бпла|опасность бпла|смоленская область опасность по бпла|беспилот|дрон/i.test(text);
                 const isDroneAlert = /тревога по бпла|фиксация бпла|фиксации бпла|Работа пво/i.test(text);
 
                 for (const region of targetRegions) {
