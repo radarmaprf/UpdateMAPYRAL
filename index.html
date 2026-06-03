@@ -386,7 +386,7 @@
         "https://corsproxy.io/?",
         "https://thingproxy.freeboard.io/fetch/"
     ];
-    const channel = "https://t.me/s/locatorru";
+    const channel = "https://t.me/s/vrv_ radar";
     const fallbackChannel = "https://t.me/s/radarrussiia";
 
     async function fetchWithProxy(url, proxyList) {
@@ -413,7 +413,7 @@
         }
         if (!html) return [];
 
-        const regex = /data-post="(?:locatorru|radarrussiia|radaryral)\/(\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\/div>/gis;
+        const regex = /data-post="(?:vrv_radar|radarrussiia|radaryral)\/(\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\/div>/gis;
         const posts = [];
         let m;
         while ((m = regex.exec(html)) !== null) {
