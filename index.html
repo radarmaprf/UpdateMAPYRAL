@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Air Alert Map — vrv_radar + locatorru + bplarussiaru (точная логика)</title>
+    <title>Air Alert Map — locatorru</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -187,14 +187,12 @@
         attribution: '', subdomains: 'abcd', maxZoom: 10, minZoom: 2
     }).addTo(map);
 
-    // Расширенная структура: храним флаги и времена последнего обновления
-    let regionStatus = {}; // { regionName: { drone, droneAlert, rocket, lastDroneTime, lastDroneAlertTime, lastRocketTime } }
-
+    let regionStatus = {};
     const colors = {
         clear: "#6c757d",
-        drone: "#ffc107",      // жёлтая опасность БПЛА
-        droneAlert: "#ff0000", // красная тревога по БПЛА
-        rocket: "#800020"      // бордовая ракетная
+        drone: "#ffc107",
+        droneAlert: "#ff0000",
+        rocket: "#800020"
     };
     let polygonsLayer = null;
 
@@ -349,12 +347,12 @@
         "Ханты-Мансийский АО": ["хмао","ханты-мансийск","сургут"],
         "Ямало-Ненецкий АО": ["янао","ямал","новый уренгой"],
         "Чеченская Республика": ["чечня","грозный","чеченская республика"],
-        "Дагестан": ["республика дагестан","махачкала"],
+        "Республика Дагестан": ["дагестан","махачкала"],
         "Башкортостан": ["башкортостан","уфа","республика башкортостан"],
         "Удмуртская Республика": ["удмуртия","ижевск"],
         "Чувашия": ["чувашская республика","чебоксары"],
         "Марий Эл": ["республика марий эл","йошкар-ола"],
-        "Республика Мордовия": ["республика мордовия","саранск"],
+        "Мордовия": ["республика мордовия","саранск"],
         "Кировская область": ["киров","кировская область","кировской области"],
         "Ульяновская область": ["ульяновск","ульяновская область","ульяновской области"],
         "Пензенская область": ["пенза","пензенская область","пензенской области"],
@@ -381,12 +379,8 @@
     };
     const allRegionNames = Object.keys(regionAliases);
 
-    // =========================== ТРИ КАНАЛА ===========================
-    const channels = [
-        { name: "vrv_radar", url: "https://t.me/s/vrv_radar" },
-        { name: "locatorru", url: "https://t.me/s/locatorru" },
-        { name: "bplarussiaru", url: "https://t.me/s/bplarussiaru" }
-    ];
+    // =========================== ОДИН КАНАЛ: locatorru ===========================
+    const channel = { name: "locatorru", url: "https://t.me/s/locatorru" };
     const proxies = [
         "https://api.allorigins.win/raw?url=",
         "https://cors-anywhere.herokuapp.com/",
@@ -408,17 +402,16 @@
         throw new Error("Все прокси недоступны");
     }
 
-    async function parseChannel(channelInfo) {
+    async function parseChannel() {
         let html = null;
         try {
-            html = await fetchWithProxy(channelInfo.url, proxies);
+            html = await fetchWithProxy(channel.url, proxies);
         } catch(e) {
-            console.warn(`Канал ${channelInfo.name} не загрузился`, e);
+            console.warn(`Канал ${channel.name} не загрузился`, e);
             return [];
         }
         if (!html) return [];
 
-        // Универсальный regex с захватом datetime
         const postRegex = /data-post="(?:[^"]+\/)?(\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\/div>.*?<time datetime="([^"]+)"/gis;
         const posts = [];
         let m;
@@ -429,182 +422,128 @@
             let timestamp = new Date(datetime).getTime();
             if (isNaN(timestamp)) timestamp = 0;
             if (text) {
-                posts.push({ id, text, timestamp, channel: channelInfo.name });
+                posts.push({ id, text, timestamp, channel: channel.name });
             }
         }
-        // fallback
         if (posts.length === 0) {
             const fallbackRegex = /data-post="(?:[^"]+\/)?(\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\/div>/gis;
             while ((m = fallbackRegex.exec(html)) !== null) {
                 let id = parseInt(m[1]);
                 let text = m[2].replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
                 if (text) {
-                    posts.push({ id, text, timestamp: id, channel: channelInfo.name });
+                    posts.push({ id, text, timestamp: id, channel: channel.name });
                 }
             }
         }
-        console.log(`Канал ${channelInfo.name}: получено ${posts.length} постов`);
+        console.log(`Канал ${channel.name}: получено ${posts.length} постов`);
+        // Сортируем от старых к новым для правильной обработки отбоев
+        posts.sort((a, b) => a.timestamp - b.timestamp);
         return posts;
     }
 
-    async function getAllPosts() {
-        const allPosts = [];
-        for (const channel of channels) {
-            const posts = await parseChannel(channel);
-            allPosts.push(...posts);
-        }
-        allPosts.sort((a, b) => a.timestamp - b.timestamp); // сортируем по возрастанию для последовательной обработки
-        console.log(`Всего постов с трёх каналов: ${allPosts.length}`);
-        return allPosts;
-    }
-
-    // =========================== ОСНОВНОЕ ОБНОВЛЕНИЕ (точная логика) ===========================
+    // =========================== ОСНОВНОЕ ОБНОВЛЕНИЕ ===========================
     async function refreshAlerts() {
         const statusDiv = document.getElementById('status');
         statusDiv.innerHTML = '🔄 Обновление...';
 
         try {
-            const posts = await getAllPosts();
-            // Инициализируем или копируем предыдущие состояния (сохраняем времена)
+            const posts = await parseChannel();
             const newStatus = {};
+
             allRegionNames.forEach(region => {
-                const old = regionStatus[region] || {};
                 newStatus[region] = {
-                    drone: old.drone || false,
-                    droneAlert: old.droneAlert || false,
-                    rocket: old.rocket || false,
-                    lastDroneTime: old.lastDroneTime || 0,
-                    lastDroneAlertTime: old.lastDroneAlertTime || 0,
-                    lastRocketTime: old.lastRocketTime || 0,
+                    drone: false,
+                    droneAlert: false,
+                    rocket: false,
+                    lastDronePost: 0,
+                    lastRocketPost: 0
                 };
             });
 
-            // Проходим по всем постам в хронологическом порядке (от старых к новым)
             for (const post of posts) {
                 const text = post.text;
                 const postTime = post.timestamp;
 
-                // Определяем затронутые регионы
                 const isAllRegions = /все регионы|по всей россии|по всем регионам|всех регионах|везде/i.test(text);
                 let matchedRegions = new Set();
                 if (!isAllRegions) {
                     for (const [official, aliases] of Object.entries(regionAliases)) {
-                        for (let alias of aliases) {
+                        const found = aliases.some(alias => {
                             const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                            if (new RegExp(`(^|\\s|\\b)${escaped}(\\s|\\b|$)`, 'i').test(text)) {
-                                matchedRegions.add(official);
-                                break;
-                            }
-                        }
+                            return new RegExp(`(^|\\s|\\b)${escaped}(\\s|\\b|$)`, 'i').test(text);
+                        });
+                        if (found) matchedRegions.add(official);
                     }
                 }
                 const targetRegions = isAllRegions ? allRegionNames : [...matchedRegions];
-                if (targetRegions.length === 0) continue;
+                if (!targetRegions.length) continue;
 
-                // Типы сообщений
                 const isOtboy = /отбой|снята|завершена|отменена|угроза снята|нет угрозы/i.test(text);
                 const isRocket = /ракетн|баллистическ|крылат.*ракет/i.test(text);
-                const isDroneAlert = /тревога по бпла|фиксация бпла|фиксации бпла|тревога бпла|внимание.*бпла/i.test(text);
                 const isDrone = /бпла|беспилот|дрон/i.test(text);
+                const isDroneAlert = /тревога по бпла|фиксация бпла|фиксации бпла|тревога бпла/i.test(text);
 
                 for (const region of targetRegions) {
                     const state = newStatus[region];
                     if (!state) continue;
 
                     if (isOtboy) {
-                        // Отбой конкретного типа
                         if (isRocket) {
-                            if (postTime >= state.lastRocketTime) {
+                            if (postTime > state.lastRocketPost) {
                                 state.rocket = false;
-                                state.lastRocketTime = 0;
+                                state.lastRocketPost = postTime;
                             }
-                        } 
-                        else if (isDroneAlert) {
-                            if (postTime >= state.lastDroneAlertTime) {
-                                state.droneAlert = false;
-                                state.lastDroneAlertTime = 0;
-                            }
-                        }
-                        else if (isDrone) {
-                            if (postTime >= state.lastDroneTime) {
+                        } else if (isDrone) {
+                            if (postTime > state.lastDronePost) {
                                 state.drone = false;
-                                state.droneAlert = false; // снимаем и тревогу по БПЛА
-                                state.lastDroneTime = 0;
-                                state.lastDroneAlertTime = 0;
+                                state.droneAlert = false;
+                                state.lastDronePost = postTime;
                             }
-                        }
-                        else {
-                            // Отбой без уточнения: снимаем ту тревогу, которая была установлена позже всех
-                            const times = [
-                                { type: 'rocket', time: state.lastRocketTime, set: 'rocket' },
-                                { type: 'droneAlert', time: state.lastDroneAlertTime, set: 'droneAlert' },
-                                { type: 'drone', time: state.lastDroneTime, set: 'drone' }
-                            ];
-                            const latest = times.reduce((max, t) => t.time > max.time ? t : max, { time: -1 });
-                            if (latest.time > 0) {
-                                if (latest.set === 'rocket') {
-                                    state.rocket = false;
-                                    state.lastRocketTime = 0;
-                                } else if (latest.set === 'droneAlert') {
-                                    state.droneAlert = false;
-                                    state.lastDroneAlertTime = 0;
-                                } else if (latest.set === 'drone') {
-                                    state.drone = false;
-                                    state.lastDroneTime = 0;
-                                    // Если снимаем обычную опасность БПЛА, то и тревогу по БПЛА тоже снимаем (она выше)
-                                    state.droneAlert = false;
-                                    state.lastDroneAlertTime = 0;
-                                }
+                        } else {
+                            if (postTime > state.lastRocketPost) {
+                                state.rocket = false;
+                                state.lastRocketPost = postTime;
+                            }
+                            if (postTime > state.lastDronePost) {
+                                state.drone = false;
+                                state.droneAlert = false;
+                                state.lastDronePost = postTime;
                             }
                         }
                         continue;
                     }
 
-                    // --- Установка тревог ---
-                    // Ракетная опасность (высший приоритет)
-                    if (isRocket) {
-                        if (postTime > state.lastRocketTime) {
-                            state.rocket = true;
-                            state.lastRocketTime = postTime;
-                        }
-                    }
-                    // Тревога по БПЛА
-                    if (isDroneAlert) {
-                        if (postTime > state.lastDroneAlertTime) {
+                    if (isDroneAlert && state.drone) {
+                        if (postTime > state.lastDronePost) {
                             state.droneAlert = true;
-                            state.lastDroneAlertTime = postTime;
-                            // Автоматически включаем обычную опасность БПЛА как базу
-                            if (postTime > state.lastDroneTime) {
-                                state.drone = true;
-                                state.lastDroneTime = postTime;
-                            }
+                            state.lastDronePost = postTime;
                         }
                     }
-                    // Обычная опасность БПЛА (не дублируем, если уже обработали тревогу)
-                    if (isDrone && !isDroneAlert) {
-                        if (postTime > state.lastDroneTime) {
+                    if (isRocket) {
+                        if (postTime > state.lastRocketPost) {
+                            state.rocket = true;
+                            state.lastRocketPost = postTime;
+                        }
+                    }
+                    if (isDrone) {
+                        if (postTime > state.lastDronePost) {
                             state.drone = true;
-                            state.lastDroneTime = postTime;
+                            state.lastDronePost = postTime;
                         }
                     }
                 }
             }
 
-            // Переносим в глобальную переменную (только флаги для отображения)
             regionStatus = {};
             for (const region of Object.keys(newStatus)) {
                 regionStatus[region] = {
                     drone: newStatus[region].drone,
                     droneAlert: newStatus[region].droneAlert,
-                    rocket: newStatus[region].rocket,
-                    lastDroneTime: newStatus[region].lastDroneTime,
-                    lastDroneAlertTime: newStatus[region].lastDroneAlertTime,
-                    lastRocketTime: newStatus[region].lastRocketTime
+                    rocket: newStatus[region].rocket
                 };
             }
 
             updateAllPolygons();
-            // Сохраняем в кэш полную структуру (с временами)
             localStorage.setItem('alertCache', JSON.stringify(regionStatus));
             statusDiv.innerHTML = '✅ Готово';
             setTimeout(() => {
@@ -648,9 +587,7 @@
                 let name = f.properties?.name || f.properties?.NAME || f.properties?.admin_name || "";
                 if (name) {
                     layer.regionName = name;
-                    if (!regionStatus[name]) {
-                        regionStatus[name] = { drone: false, droneAlert: false, rocket: false, lastDroneTime:0, lastDroneAlertTime:0, lastRocketTime:0 };
-                    }
+                    if (!regionStatus[name]) regionStatus[name] = { drone: false, droneAlert: false, rocket: false };
                     const { drone, droneAlert, rocket } = regionStatus[name];
                     layer.bindPopup(getPopupContent(name, drone, droneAlert, rocket), { className: 'custom-popup' });
                 }
@@ -659,7 +596,7 @@
         
         polygonsLayer.eachLayer(layer => {
             if (layer.regionName && !regionStatus[layer.regionName]) {
-                regionStatus[layer.regionName] = { drone: false, droneAlert: false, rocket: false, lastDroneTime:0, lastDroneAlertTime:0, lastRocketTime:0 };
+                regionStatus[layer.regionName] = { drone: false, droneAlert: false, rocket: false };
             }
         });
         
@@ -692,13 +629,10 @@
         try {
             const saved = JSON.parse(cached);
             for (let reg in saved) {
-                if (!regionStatus[reg]) regionStatus[reg] = { drone: false, droneAlert: false, rocket: false, lastDroneTime:0, lastDroneAlertTime:0, lastRocketTime:0 };
+                if (!regionStatus[reg]) regionStatus[reg] = { drone: false, droneAlert: false, rocket: false };
                 regionStatus[reg].drone = saved[reg].drone || false;
                 regionStatus[reg].droneAlert = saved[reg].droneAlert || false;
                 regionStatus[reg].rocket = saved[reg].rocket || false;
-                if (saved[reg].lastDroneTime) regionStatus[reg].lastDroneTime = saved[reg].lastDroneTime;
-                if (saved[reg].lastDroneAlertTime) regionStatus[reg].lastDroneAlertTime = saved[reg].lastDroneAlertTime;
-                if (saved[reg].lastRocketTime) regionStatus[reg].lastRocketTime = saved[reg].lastRocketTime;
             }
         } catch(e) {}
     }
@@ -715,6 +649,3 @@
 </script>
 </body>
 </html>
-
-
-Убери из списков радар locatorru
