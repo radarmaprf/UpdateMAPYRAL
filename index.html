@@ -155,26 +155,24 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-    // ========== 1. КАРТА ==========
+    // ========== КАРТА ==========
     const map = L.map('map').setView([61, 95], 4.2);
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
         attribution: '', subdomains: 'abcd', maxZoom: 10, minZoom: 2
     }).addTo(map);
 
-    // ========== 2. ЦВЕТА ==========
+    // Цвета
     const colors = {
-        clear: "#6c757d",   // серый
-        drone: "#ffc107",   // жёлтый
-        rocket: "#800020"   // бордовый
+        clear: "#6c757d",
+        drone: "#ffc107",
+        rocket: "#800020"
     };
 
-    // ========== 3. ХРАНЕНИЕ СОСТОЯНИЙ ==========
-    // regionFlags[регион] = { drone: bool, rocket: bool, lastId: number }
-    let regionFlags = {};
+    let regionFlags = {};      // { регион: { drone, rocket, lastId } }
     let circlesLayer = null;
     let polygonsLayer = null;
 
-    // ========== 4. ЧАСЫ ==========
+    // Часы
     function updateClock() {
         const now = new Date();
         document.getElementById('liveTime').innerHTML = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
@@ -190,7 +188,6 @@
         return parts[0] + '<br>' + parts.slice(1).join(' ');
     }
 
-    // Получить итоговый уровень (0,1,3) на основе флагов
     function getFinalLevel(flags) {
         if (!flags) return 0;
         if (flags.rocket) return 3;
@@ -198,7 +195,6 @@
         return 0;
     }
 
-    // Текст для попапа и панели
     function getStatusText(flags) {
         if (!flags) return { text: "⚪ Отбой / Спокойно", color: "#adb5bd" };
         if (flags.rocket) return { text: "💀 РАКЕТНАЯ ОПАСНОСТЬ! Укрытие!", color: "#c41e3a" };
@@ -212,7 +208,7 @@
         return `<div style="font-family:'Segoe UI';min-width:140px;"><b style="font-size:1rem;">${formatted}</b><br><span style="color:${st.color}">${st.text}</span></div>`;
     }
 
-    // ========== 5. КРУГИ (быстрый старт) ==========
+    // Быстрые круги (если полигоны не загрузятся)
     const quickRegions = [
         { name:"Москва", lat:55.7558, lng:37.6173 },
         { name:"Московская область", lat:55.7558, lng:37.6173 },
@@ -269,7 +265,7 @@
         });
     }
 
-    // ========== 6. СИНОНИМЫ РЕГИОНОВ ==========
+    // Словарь регионов (синонимы)
     const regionAliases = {
         "Москва": ["москва","мск","г москва","город москва"],
         "Московская область": ["московская область","подмосковье","мо обл","московской обл"],
@@ -339,39 +335,51 @@
         "Чукотский АО": ["чукотка","анадырь"]
     };
 
-    // ========== 7. ПАРСИНГ TELEGRAM С ФЛАГАМИ ==========
+    // ========== ПАРСИНГ TELEGRAM ==========
+    // Рабочие прокси (обновлённые)
     const proxies = [
         "https://api.allorigins.win/raw?url=",
-        "https://cors-anywhere.herokuapp.com/",
         "https://corsproxy.io/?",
         "https://thingproxy.freeboard.io/fetch/"
     ];
-    const channel = "https://t.me/s/locatorru";
-    const fallbackChannel = "https://t.me/s/radarrussiia";
 
-    async function fetchWithProxy(url, proxyList) {
-        for (let proxy of proxyList) {
-            try {
-                const proxyUrl = proxy + encodeURIComponent(url);
-                const response = await fetch(proxyUrl, { signal: AbortSignal.timeout(10000) });
-                if (response.ok) {
-                    const text = await response.text();
-                    if (text && text.length > 2000) return text;
+    async function fetchWithRetry(url, proxyList, retries = 2) {
+        for (let i = 0; i < retries; i++) {
+            for (let proxy of proxyList) {
+                try {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 12000);
+                    const proxyUrl = proxy + encodeURIComponent(url);
+                    const response = await fetch(proxyUrl, { signal: controller.signal });
+                    clearTimeout(timeoutId);
+                    if (response.ok) {
+                        const text = await response.text();
+                        if (text && text.length > 2000) return text;
+                    }
+                } catch (e) {
+                    console.warn(`Прокси ${proxy} ошибка:`, e);
                 }
-            } catch (e) { console.warn(`Прокси ${proxy} не сработал`, e); }
+            }
+            await new Promise(r => setTimeout(r, 1000));
         }
-        throw new Error("Все прокси недоступны");
+        throw new Error("Не удалось загрузить данные ни через один прокси");
     }
 
+    // Парсинг сообщений и обновление флагов
     async function parseTelegramAndUpdateFlags() {
+        const channel = "https://t.me/s/locatorru";
         let html = null;
         try {
-            html = await fetchWithProxy(channel, proxies);
+            html = await fetchWithRetry(channel, proxies, 2);
         } catch(e) {
-            console.warn("Основной канал locatorru не загрузился, пробуем резервный");
-            html = await fetchWithProxy(fallbackChannel, proxies);
+            console.warn("locatorru не загрузился, пробуем radarrussiia");
+            try {
+                html = await fetchWithRetry("https://t.me/s/radarrussiia", proxies, 2);
+            } catch(e2) {
+                throw new Error("Оба канала недоступны");
+            }
         }
-        if (!html) return false;
+        if (!html) throw new Error("Пустой ответ");
 
         const regex = /data-post="(?:locatorru|radarrussiia|radaryral)\/(\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\/div>/gis;
         let posts = [];
@@ -384,13 +392,11 @@
         }
         posts.sort((a,b) => b.id - a.id);
         const fresh = posts.slice(0, 40);
-        console.log(`Постов получено: ${posts.length}, анализируем ${fresh.length}`);
+        console.log(`Постов: ${posts.length}, анализируем свежих: ${fresh.length}`);
 
         let changed = false;
-
         for (const post of fresh) {
             let text = post.text.replace(/\s+/g, ' ').trim();
-            // Определяем затронутые регионы
             let matchedRegions = [];
             for (const [official, keys] of Object.entries(regionAliases)) {
                 if (keys.some(kw => text.includes(kw))) {
@@ -399,8 +405,7 @@
             }
             if (matchedRegions.length === 0) continue;
 
-            // Определяем действия
-            let setDrone = null;   // null - не менять, true/false
+            let setDrone = null;
             let setRocket = null;
 
             const isOtboyTotal = /\bотбой\b|\bснята\b|\bзавершена\b|\bотменена\b|\bнет угрозы\b|\bугроза снята\b/i.test(text);
@@ -421,7 +426,6 @@
                 if (isDrone) setDrone = true;
             }
 
-            // Применяем изменения к каждому региону
             for (const reg of matchedRegions) {
                 const old = regionFlags[reg] || { drone: false, rocket: false, lastId: 0 };
                 let newDrone = old.drone;
@@ -433,7 +437,6 @@
                     regionFlags[reg] = { drone: newDrone, rocket: newRocket, lastId: post.id };
                     changed = true;
                 } else if (old.lastId < post.id) {
-                    // обновляем id даже если флаги не изменились (для отслеживания свежести)
                     regionFlags[reg].lastId = post.id;
                 }
             }
@@ -441,23 +444,19 @@
         return changed;
     }
 
-    // ========== 8. ОБНОВЛЕНИЕ ВСЕХ ЭЛЕМЕНТОВ ИНТЕРФЕЙСА ==========
+    // ========== ОБНОВЛЕНИЕ ИНТЕРФЕЙСА ==========
     function updateAlertsPanel() {
         const container = document.getElementById('alertsList');
         if (!container) return;
-
         const activeList = [];
         for (const [region, flags] of Object.entries(regionFlags)) {
             if (flags.rocket) activeList.push({ region, type: 'rocket' });
             else if (flags.drone) activeList.push({ region, type: 'drone' });
         }
-
         if (activeList.length === 0) {
             container.innerHTML = '<div class="empty-alerts">✨ Нет активных тревог</div>';
             return;
         }
-
-        // Сначала ракетные
         activeList.sort((a,b) => (a.type === 'rocket' ? -1 : 1));
         container.innerHTML = activeList.map(item => {
             const isRocket = item.type === 'rocket';
@@ -507,12 +506,12 @@
             }
         } catch(err) {
             console.error(err);
-            statusDiv.innerHTML = '⚠️ Ошибка';
-            setTimeout(() => { if (statusDiv.innerHTML === '⚠️ Ошибка') statusDiv.innerHTML = 'Повторите'; }, 2000);
+            statusDiv.innerHTML = '❌ Ошибка: ' + (err.message || 'неизвестная');
+            setTimeout(() => { if (statusDiv.innerHTML.startsWith('❌')) statusDiv.innerHTML = 'Повторите позже'; }, 3000);
         }
     }
 
-    // ========== 9. ГРАНИЦЫ (полигоны) ==========
+    // ========== ГРАНИЦЫ (полигоны) ==========
     function loadPolygons() {
         const url = "https://raw.githubusercontent.com/azatkh/ru-regions-geojson/main/regions.geojson";
         const fallback = "https://raw.githubusercontent.com/codeforgermany/click_that_hood/main/public/data/russia.geojson";
@@ -565,12 +564,11 @@
         });
     }
 
-    // ========== 10. УПРАВЛЕНИЕ ПАНЕЛЬЮ ==========
+    // ========== БОКОВАЯ ПАНЕЛЬ ==========
     function openSidebar() { document.getElementById('alertsSidebar').classList.add('open'); }
     function closeSidebar() { document.getElementById('alertsSidebar').classList.remove('open'); }
 
-    // ========== 11. СТАРТ ==========
-    // Восстанавливаем сохранённые флаги
+    // ========== ИНИЦИАЛИЗАЦИЯ ==========
     const saved = localStorage.getItem("alertFlags");
     if (saved) {
         try { regionFlags = JSON.parse(saved); } catch(e) {}
