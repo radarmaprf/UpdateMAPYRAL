@@ -488,7 +488,7 @@
     }
     
     // ===========================================
-    // 7. ПАРСИНГ TELEGRAM (С ПОДДЕРЖКОЙ ГЛОБАЛЬНОГО ОТБОЯ)
+    // 7. ПАРСИНГ ТОЛЬКО locatorru
     // ===========================================
     const regionAliases = {
         "Москва": ["москва","мск","город москва","московская область","подмосковье","мо обл","московской обл","московская обл"],
@@ -576,22 +576,13 @@
         const statusDiv = document.getElementById('status');
         statusDiv.innerHTML = '🔄 Обновление...';
         try {
-            let html = null;
-            // Пробуем несколько каналов
-            const channels = ["bplarussiaru", "locatorru", "radarrussiia"];
-            for (let ch of channels) {
-                try {
-                    let maybeHtml = await fetchWithProxy(`https://t.me/s/${ch}`);
-                    if (maybeHtml && maybeHtml.includes('tgme_widget_message_text')) {
-                        html = maybeHtml;
-                        console.log(`Используем канал ${ch}`);
-                        break;
-                    }
-                } catch(e) {}
-            }
-            if (!html) throw new Error("Нет данных ни с одного канала");
+            // Парсим ТОЛЬКО канал locatorru
+            const channel = "locatorru";
+            const html = await fetchWithProxy(`https://t.me/s/${channel}`);
+            if (!html) throw new Error("Нет данных с канала locatorru");
             
-            const regex = /data-post="(?:bplarussiaru|locatorru|radarrussiia)\/(\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\/div>/gis;
+            // Регулярка только для locatorru
+            const regex = /data-post="locatorru\/(\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\/div>/gis;
             let posts = [];
             let m;
             while ((m = regex.exec(html)) !== null) {
@@ -601,7 +592,6 @@
             const fresh = posts.slice(0, 50);
             
             let newStatus = JSON.parse(JSON.stringify(regionStatus));
-            let globalClearHappened = false;
             
             for (let post of fresh) {
                 const text = post.text;
@@ -622,7 +612,6 @@
                             newStatus[reg] = { drone: false, rocket: false };
                         }
                     }
-                    globalClearHappened = true;
                     console.log("🌍 Глобальный отбой в сообщении:", text.substring(0, 100));
                     continue;
                 }
