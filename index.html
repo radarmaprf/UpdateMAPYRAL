@@ -17,6 +17,104 @@
         }
         .time-main { font-size: 1.8rem; font-weight: 600; line-height: 1; }
         .date { font-size: 0.65rem; opacity: 0.7; margin-top: 4px; text-transform: uppercase; }
+        
+        /* Панель активных тревог */
+        .alerts-panel {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 2000;
+            background: rgba(10,14,26,0.9);
+            backdrop-filter: blur(8px);
+            border-radius: 16px;
+            border: 1px solid rgba(255,255,255,0.15);
+            min-width: 220px;
+            max-width: 300px;
+            overflow: hidden;
+            transition: all 0.2s ease;
+        }
+        .alerts-header {
+            padding: 10px 16px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: #e8eef2;
+            font-weight: bold;
+            font-size: 0.9rem;
+            background: rgba(0,0,0,0.3);
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .alerts-header:hover {
+            background: rgba(255,255,255,0.1);
+        }
+        .alerts-header span:first-child {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .toggle-icon {
+            font-size: 1rem;
+            transition: transform 0.2s;
+        }
+        .alerts-content {
+            max-height: 0;
+            overflow-y: auto;
+            transition: max-height 0.3s ease;
+            background: rgba(0,0,0,0.4);
+        }
+        .alerts-content.open {
+            max-height: 400px;
+            padding: 10px;
+        }
+        .alert-list {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            font-size: 0.8rem;
+        }
+        .alert-list li {
+            padding: 6px 8px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: #e8eef2;
+        }
+        .alert-list li:last-child {
+            border-bottom: none;
+        }
+        .alert-type {
+            font-size: 0.7rem;
+            padding: 2px 6px;
+            border-radius: 12px;
+            font-weight: bold;
+        }
+        .type-drone { background: #ffc107; color: #1a1a2e; }
+        .type-rocket { background: #dc3545; color: white; }
+        .copy-btn {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: #e8eef2;
+            padding: 4px 8px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.7rem;
+            margin-top: 8px;
+            width: 100%;
+            text-align: center;
+            transition: 0.2s;
+        }
+        .copy-btn:hover {
+            background: #28a745;
+        }
+        .empty-alerts {
+            text-align: center;
+            color: #aaa;
+            padding: 12px;
+            font-size: 0.75rem;
+        }
+        
         .legend {
             position: fixed; bottom: 20px; left: 20px; z-index: 2000;
             background: rgba(10,14,26,0.85); backdrop-filter: blur(8px);
@@ -48,6 +146,8 @@
         @media (max-width: 600px) {
             .time-main { font-size: 1.2rem; }
             .clock { padding: 4px 12px; top: 10px; right: 10px; }
+            .alerts-panel { top: 10px; left: 10px; max-width: 260px; }
+            .alerts-header { padding: 6px 12px; font-size: 0.8rem; }
             .legend { bottom: 10px; left: 10px; padding: 8px 12px; font-size: 0.65rem; }
             .legend-color { width: 20px; height: 14px; }
             .update-btn { bottom: 10px; right: 10px; padding: 6px 12px; font-size: 0.75rem; }
@@ -61,6 +161,19 @@
     <div class="time-main" id="liveTime">--:--</div>
     <div class="date" id="liveDate">--</div>
 </div>
+
+<!-- Панель активных тревог -->
+<div class="alerts-panel" id="alertsPanel">
+    <div class="alerts-header" id="alertsHeader">
+        <span>⚠️ Активные тревоги</span>
+        <span class="toggle-icon" id="toggleIcon">▼</span>
+    </div>
+    <div class="alerts-content" id="alertsContent">
+        <div class="empty-alerts">Нет активных тревог</div>
+        <button class="copy-btn" id="copyAlertsBtn" style="display: none;">📋 Копировать список</button>
+    </div>
+</div>
+
 <div class="legend">
     <div class="legend-item"><div class="legend-color" style="background: #6c757d;"></div> <span>⚪ Отбой / Спокойно</span></div>
     <div class="legend-item"><div class="legend-color" style="background: #ffc107;"></div> <span>🟡 Опасность БПЛА</span></div>
@@ -137,7 +250,6 @@
             if (name && regionStatus[name]) {
                 let drone = regionStatus[name].drone;
                 let rocket = regionStatus[name].rocket;
-                // Для заблокированных регионов принудительно сбрасываем тревоги
                 if (FORCED_CLEAR_REGIONS.includes(name)) {
                     drone = false;
                     rocket = false;
@@ -150,7 +262,77 @@
                 layer.getPopup().setContent(getPopupContent(name, drone, rocket));
             }
         });
+        // Обновляем панель активных тревог
+        updateAlertsPanel();
     }
+
+    // ===========================================
+    // ПАНЕЛЬ АКТИВНЫХ ТРЕВОГ
+    // ===========================================
+    function updateAlertsPanel() {
+        const alertsList = [];
+        for (const [region, status] of Object.entries(regionStatus)) {
+            if (FORCED_CLEAR_REGIONS.includes(region)) continue;
+            if (status.rocket) {
+                alertsList.push({ region, type: 'rocket', label: '🔴 Ракетная опасность' });
+            } else if (status.drone) {
+                alertsList.push({ region, type: 'drone', label: '🟡 Опасность БПЛА' });
+            }
+        }
+        
+        const contentDiv = document.getElementById('alertsContent');
+        const copyBtn = document.getElementById('copyAlertsBtn');
+        
+        if (alertsList.length === 0) {
+            contentDiv.innerHTML = `<div class="empty-alerts">✅ Нет активных тревог</div>`;
+            copyBtn.style.display = 'none';
+        } else {
+            let html = `<ul class="alert-list">`;
+            for (const alert of alertsList) {
+                const typeClass = alert.type === 'rocket' ? 'type-rocket' : 'type-drone';
+                const typeText = alert.type === 'rocket' ? 'Ракетная опасность' : 'Опасность БПЛА';
+                html += `<li>
+                            <span>${alert.region}</span>
+                            <span class="alert-type ${typeClass}">${typeText}</span>
+                         </li>`;
+            }
+            html += `</ul>`;
+            contentDiv.innerHTML = html;
+            copyBtn.style.display = 'block';
+            // Обновляем кнопку копирования, чтобы она работала
+            const newCopyBtn = document.getElementById('copyAlertsBtn');
+            if (newCopyBtn) {
+                newCopyBtn.onclick = () => copyAlertsList(alertsList);
+            }
+        }
+    }
+    
+    function copyAlertsList(alertsList) {
+        const text = alertsList.map(a => `${a.region}: ${a.label}`).join('\n');
+        navigator.clipboard.writeText(text).then(() => {
+            const btn = document.getElementById('copyAlertsBtn');
+            const originalText = btn.innerText;
+            btn.innerText = '✅ Скопировано!';
+            setTimeout(() => { btn.innerText = originalText; }, 1500);
+        }).catch(err => console.warn('Ошибка копирования:', err));
+    }
+
+    // Сворачивание/разворачивание панели
+    let panelOpen = false;
+    const alertsHeader = document.getElementById('alertsHeader');
+    const alertsContent = document.getElementById('alertsContent');
+    const toggleIcon = document.getElementById('toggleIcon');
+    
+    alertsHeader.addEventListener('click', () => {
+        panelOpen = !panelOpen;
+        if (panelOpen) {
+            alertsContent.classList.add('open');
+            toggleIcon.innerHTML = '▲';
+        } else {
+            alertsContent.classList.remove('open');
+            toggleIcon.innerHTML = '▼';
+        }
+    });
 
     // ===========================================
     // СИНОНИМЫ РЕГИОНОВ
@@ -278,7 +460,7 @@
     }
 
     // ===========================================
-    // ОБРАБОТКА СООБЩЕНИЙ (с игнорированием заблокированных регионов)
+    // ОБРАБОТКА СООБЩЕНИЙ
     // ===========================================
     async function refreshAlerts() {
         const statusDiv = document.getElementById('status');
@@ -290,11 +472,11 @@
             for (const post of sortedPosts) {
                 let text = post.text.replace(/\s+/g, ' ').trim();
                 
-                // Глобальный отбой (но заблокированные регионы всё равно не изменятся)
+                // Глобальный отбой (кроме заблокированных)
                 const isGlobalOtboy = /отбой по всей россии|отбой все регионы|снята угроза по всей россии|везде отбой|глобальный отбой/i.test(text);
                 if (isGlobalOtboy) {
                     for (let reg of allRegionNames) {
-                        if (FORCED_CLEAR_REGIONS.includes(reg)) continue; // пропускаем
+                        if (FORCED_CLEAR_REGIONS.includes(reg)) continue;
                         if (!regionStatus[reg]) regionStatus[reg] = { drone: false, rocket: false };
                         regionStatus[reg].drone = false;
                         regionStatus[reg].rocket = false;
@@ -313,7 +495,6 @@
                     }
                 }
                 let targetRegions = isAllRegions ? allRegionNames : matchedRegions;
-                // Убираем заблокированные регионы из targetRegions
                 targetRegions = targetRegions.filter(reg => !FORCED_CLEAR_REGIONS.includes(reg));
                 if (targetRegions.length === 0) continue;
                 
@@ -377,7 +558,6 @@
         polygonsLayer = L.geoJSON(geoData, {
             style: (feature) => {
                 let name = feature.properties?.name || feature.properties?.NAME || feature.properties?.admin_name || "";
-                // Нормализация имён
                 if (name && (name.includes("Санкт-Петербург") || name === "Санкт-Петербург")) name = "Санкт-Петербург";
                 if (name && (name.includes("Ленинградская область") || name === "Ленинградская область")) name = "Ленинградская область";
                 if (name && name.includes("Московская")) name = "Московская область";
@@ -388,7 +568,6 @@
                     drone = regionStatus[name].drone;
                     rocket = regionStatus[name].rocket;
                 }
-                // Принудительный сброс для заблокированных
                 if (FORCED_CLEAR_REGIONS.includes(name)) {
                     drone = false;
                     rocket = false;
@@ -408,7 +587,6 @@
                     
                     layer.regionName = name;
                     if (!regionStatus[name]) regionStatus[name] = { drone: false, rocket: false };
-                    // Для заблокированных — принудительно чистый статус
                     if (FORCED_CLEAR_REGIONS.includes(name)) {
                         regionStatus[name].drone = false;
                         regionStatus[name].rocket = false;
@@ -438,14 +616,13 @@
         try {
             const saved = JSON.parse(cached);
             for (let reg in saved) {
-                if (FORCED_CLEAR_REGIONS.includes(reg)) continue; // не загружаем статус для заблокированных
+                if (FORCED_CLEAR_REGIONS.includes(reg)) continue;
                 if (!regionStatus[reg]) regionStatus[reg] = { drone: false, rocket: false };
                 regionStatus[reg].drone = saved[reg].drone || false;
                 regionStatus[reg].rocket = saved[reg].rocket || false;
             }
         } catch(e) {}
     }
-    // Принудительно обнуляем статус для заблокированных регионов
     for (let reg of FORCED_CLEAR_REGIONS) {
         regionStatus[reg] = { drone: false, rocket: false };
     }
