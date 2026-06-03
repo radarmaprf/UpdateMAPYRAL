@@ -475,17 +475,14 @@
     }
     
     // ===========================================
-    // 6. ГЛОБАЛЬНЫЙ ОТБОЙ (СБРОС ВСЕХ ТРЕВОГ)
+    // 6. ГЛОБАЛЬНЫЙ ОТБОЙ (ФУНКЦИЯ)
     // ===========================================
     function globalClearAllAlerts() {
-        // Сбросить все регионы, кроме игнорируемых
         for (let reg in regionStatus) {
             if (!IGNORED_REGIONS.includes(reg)) {
                 regionStatus[reg] = { drone: false, rocket: false };
             }
         }
-        // Также убедиться, что у всех регионов, которые могут появиться позже, статус чистый
-        // Но мы просто обновим отображение
         updateAllPolygons();
         console.log("🌍 Глобальный отбой: все тревоги сброшены");
     }
@@ -580,39 +577,54 @@
         statusDiv.innerHTML = '🔄 Обновление...';
         try {
             let html = null;
-            try {
-                html = await fetchWithProxy("https://t.me/s/locatorru");
-            } catch(e) {
-                html = await fetchWithProxy("https://t.me/s/radarrussiia");
+            // Пробуем несколько каналов
+            const channels = ["bplarussiaru", "locatorru", "radarrussiia"];
+            for (let ch of channels) {
+                try {
+                    let maybeHtml = await fetchWithProxy(`https://t.me/s/${ch}`);
+                    if (maybeHtml && maybeHtml.includes('tgme_widget_message_text')) {
+                        html = maybeHtml;
+                        console.log(`Используем канал ${ch}`);
+                        break;
+                    }
+                } catch(e) {}
             }
-            if (!html) throw new Error("Нет данных");
-            const regex = /data-post="(?:locatorru|radarrussiia)\/(\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\/div>/gis;
+            if (!html) throw new Error("Нет данных ни с одного канала");
+            
+            const regex = /data-post="(?:bplarussiaru|locatorru|radarrussiia)\/(\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\/div>/gis;
             let posts = [];
             let m;
             while ((m = regex.exec(html)) !== null) {
                 posts.push({ id: parseInt(m[1]), text: m[2].replace(/<[^>]*>/g, ' ').toLowerCase() });
             }
             posts.sort((a,b) => b.id - a.id);
-            const fresh = posts.slice(0, 40);
+            const fresh = posts.slice(0, 50);
             
-            // Создаём копию текущего статуса, чтобы применять изменения последовательно
             let newStatus = JSON.parse(JSON.stringify(regionStatus));
+            let globalClearHappened = false;
             
             for (let post of fresh) {
                 const text = post.text;
                 
-                // --- ГЛОБАЛЬНЫЙ ОТБОЙ ---
-                // Проверяем ключевые фразы: "отбой по всем регионам", "отбой опасности по всем регионам", "все регионы отбой" и т.п.
-                const globalClearPattern = /отбой.*(все регионы|по всем регионам|повсеместно|везде|всех регионов)/i;
-                if (globalClearPattern.test(text)) {
-                    // Сбросить все тревоги (кроме игнорируемых)
+                // --- ГЛОБАЛЬНЫЙ ОТБОЙ (расширенные паттерны) ---
+                const globalClearPatterns = [
+                    /отбой.*(все регионы|по всем регионам|повсеместно|везде|всех регионов)/i,
+                    /отбой.*по всем ранее/i,
+                    /снята.*угроза.*по всем/i,
+                    /все тревоги сняты/i,
+                    /глобальный отбой/i
+                ];
+                let isGlobalClear = globalClearPatterns.some(pattern => pattern.test(text));
+                
+                if (isGlobalClear) {
                     for (let reg in newStatus) {
                         if (!IGNORED_REGIONS.includes(reg)) {
                             newStatus[reg] = { drone: false, rocket: false };
                         }
                     }
-                    console.log("🌍 Глобальный отбой в сообщении:", text.substring(0, 80));
-                    continue; // Это сообщение уже обработано как глобальный сброс, не нужно искать регионы
+                    globalClearHappened = true;
+                    console.log("🌍 Глобальный отбой в сообщении:", text.substring(0, 100));
+                    continue;
                 }
                 
                 // --- ОБЫЧНАЯ ОБРАБОТКА РЕГИОНОВ ---
@@ -640,7 +652,6 @@
                 }
             }
             
-            // Применяем изменения
             regionStatus = newStatus;
             updateAllPolygons();
             localStorage.setItem("alertCache", JSON.stringify(regionStatus));
