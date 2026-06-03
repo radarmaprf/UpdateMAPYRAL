@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Air Alert Map — locatorru + bplarussiaru</title>
+    <title>Air Alert Map — vrv_radar + locatorru + bplarussiaru</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -314,7 +314,7 @@
         "Московская область": ["москва","мск","город москва","московская область","подмосковье","мо обл","московской обл","московская обл","московской области"],
         "Санкт-Петербург": ["санкт-петербург","питер","спб","ленинград"],
         "Ленинградская область": ["ленинградская область","ленобласть","ленинградской обл","ленинградской области"],
-        "Белгородскаобласть": ["белгород","белгородская область","белгородской обл","белгородская обл","белгородской области","белгородщина"],
+        "Белгородская область": ["белгород","белгородская область","белгородской обл","белгородская обл","белгородской области","белгородщина"],
         "Брянская область": ["брянск","брянская область","брянской обл","брянская обл","брянщина","брянской области"],
         "Воронежская область": ["воронеж","воронежская область","воронежской обл","воронежской области"],
         "Курская область": ["курск","курская область","курской обл","курской области"],
@@ -379,8 +379,9 @@
     };
     const allRegionNames = Object.keys(regionAliases);
 
-    // =========================== ДВА КАНАЛА: locatorru + bplarussiaru ===========================
+    // =========================== ТРИ КАНАЛА: vrv_radar + locatorru + bplarussiaru ===========================
     const channels = [
+        { name: "vrv_radar", url: "https://t.me/s/vrv_radar" },
         { name: "locatorru", url: "https://t.me/s/locatorru" },
         { name: "bplarussiaru", url: "https://t.me/s/bplarussiaru" }
     ];
@@ -416,8 +417,7 @@
         }
         if (!html) return [];
 
-        // Универсальный regex для обоих каналов
-        // Формат: data-post="locatorru/1234" или data-post="/bplarussiaru/1234"
+        // Универсальный regex для всех каналов
         const postRegex = /data-post="(?:[^"]+\/)?(\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\/div>.*?<time datetime="([^"]+)"/gis;
         const posts = [];
         let m;
@@ -446,7 +446,7 @@
         return posts;
     }
 
-    // Получение всех постов с двух каналов, объединённых и отсортированных по времени (новые первыми)
+    // Получение всех постов с трёх каналов, объединённых и отсортированных по времени (новые первыми)
     async function getAllPosts() {
         const allPosts = [];
         for (const channel of channels) {
@@ -455,7 +455,7 @@
         }
         // Сортируем по timestamp (по убыванию: свежие выше)
         allPosts.sort((a, b) => b.timestamp - a.timestamp);
-        console.log(`Всего постов с двух каналов: ${allPosts.length}`);
+        console.log(`Всего постов с трёх каналов: ${allPosts.length}`);
         return allPosts;
     }
 
