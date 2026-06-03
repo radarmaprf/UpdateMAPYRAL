@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Air Alert Map — vrv_radar + locatorru + bplarussiaru</title>
+    <title>Air Alert Map — vrv_radar + locatorru</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -187,12 +187,12 @@
         attribution: '', subdomains: 'abcd', maxZoom: 10, minZoom: 2
     }).addTo(map);
 
-    let regionStatus = {};
+    let regionStatus = {}; // { region: { drone, droneAlert, rocket } }
     const colors = {
         clear: "#6c757d",
-        drone: "#ffc107",
-        droneAlert: "#ff0000",
-        rocket: "#800020"
+        drone: "#ffc107",      // жёлтая опасность БПЛА
+        droneAlert: "#ff0000", // красная тревога по БПЛА
+        rocket: "#800020"      // бордовая ракетная
     };
     let polygonsLayer = null;
 
@@ -379,11 +379,10 @@
     };
     const allRegionNames = Object.keys(regionAliases);
 
-    // =========================== ТРИ КАНАЛА ===========================
+    // =========================== ДВА КАНАЛА: vrv_radar + locatorru ===========================
     const channels = [
         { name: "vrv_radar", url: "https://t.me/s/vrv_radar" },
-        { name: "locatorru", url: "https://t.me/s/locatorru" },
-        { name: "bplarussiaru", url: "https://t.me/s/bplarussiaru" }
+        { name: "locatorru", url: "https://t.me/s/locatorru" }
     ];
     const proxies = [
         "https://api.allorigins.win/raw?url=",
@@ -406,6 +405,7 @@
         throw new Error("Все прокси недоступны");
     }
 
+    // Парсинг одного канала: извлекаем посты с ID, текстом и временем (timestamp)
     async function parseChannel(channelInfo) {
         let html = null;
         try {
@@ -416,6 +416,7 @@
         }
         if (!html) return [];
 
+        // Универсальный regex для всех каналов
         const postRegex = /data-post="(?:[^"]+\/)?(\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\/div>.*?<time datetime="([^"]+)"/gis;
         const posts = [];
         let m;
@@ -429,6 +430,7 @@
                 posts.push({ id, text, timestamp, channel: channelInfo.name });
             }
         }
+        // Если не удалось извлечь время (старый формат), используем ID как fallback
         if (posts.length === 0) {
             const fallbackRegex = /data-post="(?:[^"]+\/)?(\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\/div>/gis;
             while ((m = fallbackRegex.exec(html)) !== null) {
@@ -443,19 +445,20 @@
         return posts;
     }
 
+    // Получение всех постов с двух каналов, объединённых и отсортированных по времени (новые первыми)
     async function getAllPosts() {
         const allPosts = [];
         for (const channel of channels) {
             const posts = await parseChannel(channel);
             allPosts.push(...posts);
         }
-        // ИСПРАВЛЕНИЕ 1: сортировка от старых к новым
-        allPosts.sort((a, b) => a.timestamp - b.timestamp);
-        console.log(`Всего постов с трёх каналов: ${allPosts.length}`);
+        // Сортируем по timestamp (по убыванию: свежие выше)
+        allPosts.sort((a, b) => b.timestamp - a.timestamp);
+        console.log(`Всего постов с двух каналов: ${allPosts.length}`);
         return allPosts;
     }
 
-    // =========================== ОСНОВНОЕ ОБНОВЛЕНИЕ (с исправлениями) ===========================
+    // =========================== ОСНОВНОЕ ОБНОВЛЕНИЕ (с учётом droneAlert) ===========================
     async function refreshAlerts() {
         const statusDiv = document.getElementById('status');
         statusDiv.innerHTML = '🔄 Обновление...';
@@ -474,6 +477,7 @@
                 };
             });
 
+            // Обрабатываем посты в порядке убывания времени (свежие первыми)
             for (const post of posts) {
                 const text = post.text;
                 const postTime = post.timestamp;
@@ -492,34 +496,29 @@
                 const targetRegions = isAllRegions ? allRegionNames : [...matchedRegions];
                 if (!targetRegions.length) continue;
 
-                // ИСПРАВЛЕНИЯ 2, 3, 4: новые regex
                 const isOtboy = /отбой|снята|завершена|отменена|угроза снята|нет угрозы/i.test(text);
-                const isDroneCancel = /отбой.*бпла|отбой опасности по бпла|беспилотн.*опасност.*отмен/i.test(text);
-                const isRocketCancel = /отбой.*ракетн|ракетн.*опасност.*отмен/i.test(text);
-                
                 const isRocket = /ракетн|баллистическ|крылат.*ракет/i.test(text);
-                const isDroneDanger = /опасност.*бпла|беспилотн.*опасност/i.test(text);
+                const isDrone = /бпла|беспилот|дрон/i.test(text);
                 const isDroneAlert = /тревога по бпла|фиксация бпла|фиксации бпла|тревога бпла/i.test(text);
 
                 for (const region of targetRegions) {
                     const state = newStatus[region];
                     if (!state) continue;
 
-                    // ИСПРАВЛЕНИЕ 5: блок отбоев с учётом специфичных cancel
+                    // Отбой
                     if (isOtboy) {
-                        if (isRocketCancel) {
+                        if (isRocket) {
                             if (postTime > state.lastRocketPost) {
                                 state.rocket = false;
                                 state.lastRocketPost = postTime;
                             }
-                        } else if (isDroneCancel) {
+                        } else if (isDrone) {
                             if (postTime > state.lastDronePost) {
                                 state.drone = false;
                                 state.droneAlert = false;
                                 state.lastDronePost = postTime;
                             }
                         } else {
-                            // общий отбой
                             if (postTime > state.lastRocketPost) {
                                 state.rocket = false;
                                 state.lastRocketPost = postTime;
@@ -546,8 +545,7 @@
                             state.lastRocketPost = postTime;
                         }
                     }
-                    // ИСПРАВЛЕНИЕ 6: опасность БПЛА теперь по isDroneDanger
-                    if (isDroneDanger) {
+                    if (isDrone) {
                         if (postTime > state.lastDronePost) {
                             state.drone = true;
                             state.lastDronePost = postTime;
@@ -556,6 +554,7 @@
                 }
             }
 
+            // Обновляем глобальное состояние
             regionStatus = {};
             for (const region of Object.keys(newStatus)) {
                 regionStatus[region] = {
