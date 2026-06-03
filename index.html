@@ -189,7 +189,6 @@
         return parts[0] + '<br>' + parts.slice(1).join(' ');
     }
 
-    // Определяем уровень тревоги (0,1,2) на основе флагов (приоритет: тревога > опасность)
     function getAlertLevel(flags) {
         if (!flags) return 0;
         if (flags.alert) return 2;
@@ -387,10 +386,13 @@
             });
         }
         posts.sort((a,b) => b.id - a.id);
+        // Ограничиваем 50 постами, как просил пользователь
         const fresh = posts.slice(0, 50);
         console.log(`Постов: ${posts.length}, анализируем свежих: ${fresh.length}`);
 
         let changed = false;
+        let globalClear = false;
+
         for (const post of fresh) {
             let text = post.text.replace(/\s+/g, ' ').trim();
             let matchedRegions = [];
@@ -399,33 +401,31 @@
                     matchedRegions.push(official);
                 }
             }
+
+            const isGeneralOtboy = /\bотбой\b|\bснята\b|\bзавершена\b|\bотменена\b|\bнет угрозы\b/i.test(text);
+            const isDroneOtboy = /отбой бпла|бпла отбой|беспилотники отбой|снята угроза бпла|угроза бпла снята/i.test(text);
+            const isGlobalOtboy = isGeneralOtboy || isDroneOtboy;
+
+            if (isGlobalOtboy && matchedRegions.length === 0) {
+                globalClear = true;
+                continue;
+            }
+
             if (matchedRegions.length === 0) continue;
 
-            // Флаги, которые будем устанавливать
-            let setDanger = null;   // null - не менять, true/false
+            let setDanger = null;
             let setAlert = null;
 
-            // Проверяем общий отбой (сбрасывает и опасность, и тревогу)
-            const isGeneralOtboy = /\bотбой\b|\bснята\b|\bзавершена\b|\bотменена\b|\bнет угрозы\b/i.test(text);
-            
-            // Отбой именно по БПЛА (но в канале обычно пишут просто "отбой", поэтому обрабатываем общий)
-            // Но для точности: если есть "отбой бпла" - тоже сбрасываем оба
-            const isDroneOtboy = /отбой бпла|бпла отбой|беспилотники отбой|снята угроза бпла|угроза бпла снята/i.test(text);
-            
-            if (isGeneralOtboy || isDroneOtboy) {
+            if (isGlobalOtboy) {
                 setDanger = false;
                 setAlert = false;
             } else {
-                // Определяем опасность (жёлтый)
                 const isDanger = /\bбпла?\b|беспилот|дрон|опасность по бпла|атака бпла|внимание по бпла|угроза бпла/i.test(text);
-                // Определяем тревогу (красный)
                 const isAlert = /фиксация|тревога по бпла|тревога\b|внимание тревога|объявлена тревога/i.test(text);
-                
                 if (isAlert) setAlert = true;
                 else if (isDanger) setDanger = true;
             }
 
-            // Если нет изменений — пропускаем
             if (setDanger === null && setAlert === null) continue;
 
             for (const reg of matchedRegions) {
@@ -437,10 +437,8 @@
                 let newAlert = old.alert;
                 if (setDanger !== null) newDanger = setDanger;
                 if (setAlert !== null) newAlert = setAlert;
-                
-                // Если устанавливается тревога, то опасность тоже можно считать true (но для визуала это не важно, т.к. тревога имеет приоритет)
-                if (newAlert) newDanger = true; // чтобы в данных сохранялась логика, но цвет определит уровень 2
-                
+                if (newAlert) newDanger = true;
+
                 if (newDanger !== old.danger || newAlert !== old.alert) {
                     regionFlags[reg] = { danger: newDanger, alert: newAlert, lastId: post.id };
                     changed = true;
@@ -449,6 +447,24 @@
                 }
             }
         }
+
+        if (globalClear) {
+            let anyActive = false;
+            for (const reg in regionFlags) {
+                if (regionFlags[reg].danger || regionFlags[reg].alert) {
+                    anyActive = true;
+                    break;
+                }
+            }
+            if (anyActive) {
+                console.log("Глобальный отбой: сбрасываем все тревоги");
+                for (const reg in regionFlags) {
+                    regionFlags[reg] = { danger: false, alert: false, lastId: regionFlags[reg].lastId };
+                }
+                changed = true;
+            }
+        }
+
         return changed;
     }
 
