@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Air Alert Map — vrv_radar + locatorru + bplarussiaru</title>
+    <title>Air Alert Map — vrv_radar (точная логика)</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -187,7 +187,9 @@
         attribution: '', subdomains: 'abcd', maxZoom: 10, minZoom: 2
     }).addTo(map);
 
-    let regionStatus = {}; // { region: { drone, droneAlert, rocket } }
+    // Структура: храним флаги и времена последнего обновления
+    let regionStatus = {}; // { regionName: { drone, droneAlert, rocket, lastDroneTime, lastDroneAlertTime, lastRocketTime } }
+
     const colors = {
         clear: "#6c757d",
         drone: "#ffc107",      // жёлтая опасность БПЛА
@@ -347,12 +349,12 @@
         "Ханты-Мансийский АО": ["хмао","ханты-мансийск","сургут"],
         "Ямало-Ненецкий АО": ["янао","ямал","новый уренгой"],
         "Чеченская Республика": ["чечня","грозный","чеченская республика"],
-        "Республика Дагестан": ["дагестан","махачкала"],
+        "Дагестан": ["республика дагестан","махачкала"],
         "Башкортостан": ["башкортостан","уфа","республика башкортостан"],
         "Удмуртская Республика": ["удмуртия","ижевск"],
         "Чувашия": ["чувашская республика","чебоксары"],
         "Марий Эл": ["республика марий эл","йошкар-ола"],
-        "Мордовия": ["республика мордовия","саранск"],
+        "Республика Мордовия": ["республика мордовия","саранск"],
         "Кировская область": ["киров","кировская область","кировской области"],
         "Ульяновская область": ["ульяновск","ульяновская область","ульяновской области"],
         "Пензенская область": ["пенза","пензенская область","пензенской области"],
@@ -379,11 +381,9 @@
     };
     const allRegionNames = Object.keys(regionAliases);
 
-    // =========================== ТРИ КАНАЛА: vrv_radar + locatorru + bplarussiaru ===========================
+    // =========================== ТОЛЬКО КАНАЛ vrv_radar ===========================
     const channels = [
-        { name: "vrv_radar", url: "https://t.me/s/vrv_radar" },
-        { name: "locatorru", url: "https://t.me/s/locatorru" },
-        { name: "bplarussiaru", url: "https://t.me/s/bplarussiaru" }
+        { name: "vrv_radar", url: "https://t.me/s/vrv_radar" }
     ];
     const proxies = [
         "https://api.allorigins.win/raw?url=",
@@ -406,7 +406,6 @@
         throw new Error("Все прокси недоступны");
     }
 
-    // Парсинг одного канала: извлекаем посты с ID, текстом и временем (timestamp)
     async function parseChannel(channelInfo) {
         let html = null;
         try {
@@ -417,8 +416,7 @@
         }
         if (!html) return [];
 
-        // Для bplarussiaru формат data-post="/bplarussiaru/1234", а для других data-post="vrv_radar/1234"
-        // Используем универсальный regex с захватом имени канала
+        // Универсальный regex с захватом datetime
         const postRegex = /data-post="(?:[^"]+\/)?(\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\/div>.*?<time datetime="([^"]+)"/gis;
         const posts = [];
         let m;
@@ -432,7 +430,7 @@
                 posts.push({ id, text, timestamp, channel: channelInfo.name });
             }
         }
-        // Если не удалось извлечь время (старый формат), используем ID как fallback
+        // fallback
         if (posts.length === 0) {
             const fallbackRegex = /data-post="(?:[^"]+\/)?(\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\/div>/gis;
             while ((m = fallbackRegex.exec(html)) !== null) {
@@ -447,20 +445,18 @@
         return posts;
     }
 
-    // Получение всех постов с трёх каналов, объединённых и отсортированных по времени (новые первыми)
     async function getAllPosts() {
         const allPosts = [];
         for (const channel of channels) {
             const posts = await parseChannel(channel);
             allPosts.push(...posts);
         }
-        // Сортируем по timestamp (по убыванию: свежие выше)
-        allPosts.sort((a, b) => b.timestamp - a.timestamp);
-        console.log(`Всего постов с трёх каналов: ${allPosts.length}`);
+        allPosts.sort((a, b) => a.timestamp - b.timestamp);
+        console.log(`Всего постов с канала vrv_radar: ${allPosts.length}`);
         return allPosts;
     }
 
-    // =========================== ОСНОВНОЕ ОБНОВЛЕНИЕ (с учётом droneAlert) ===========================
+    // =========================== ОСНОВНОЕ ОБНОВЛЕНИЕ ===========================
     async function refreshAlerts() {
         const statusDiv = document.getElementById('status');
         statusDiv.innerHTML = '🔄 Обновление...';
@@ -468,18 +464,18 @@
         try {
             const posts = await getAllPosts();
             const newStatus = {};
-
             allRegionNames.forEach(region => {
+                const old = regionStatus[region] || {};
                 newStatus[region] = {
-                    drone: false,
-                    droneAlert: false,
-                    rocket: false,
-                    lastDronePost: 0,
-                    lastRocketPost: 0
+                    drone: old.drone || false,
+                    droneAlert: old.droneAlert || false,
+                    rocket: old.rocket || false,
+                    lastDroneTime: old.lastDroneTime || 0,
+                    lastDroneAlertTime: old.lastDroneAlertTime || 0,
+                    lastRocketTime: old.lastRocketTime || 0,
                 };
             });
 
-            // Обрабатываем посты в порядке убывания времени (свежие первыми)
             for (const post of posts) {
                 const text = post.text;
                 const postTime = post.timestamp;
@@ -488,81 +484,107 @@
                 let matchedRegions = new Set();
                 if (!isAllRegions) {
                     for (const [official, aliases] of Object.entries(regionAliases)) {
-                        const found = aliases.some(alias => {
+                        for (let alias of aliases) {
                             const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                            return new RegExp(`(^|\\s|\\b)${escaped}(\\s|\\b|$)`, 'i').test(text);
-                        });
-                        if (found) matchedRegions.add(official);
+                            if (new RegExp(`(^|\\s|\\b)${escaped}(\\s|\\b|$)`, 'i').test(text)) {
+                                matchedRegions.add(official);
+                                break;
+                            }
+                        }
                     }
                 }
                 const targetRegions = isAllRegions ? allRegionNames : [...matchedRegions];
-                if (!targetRegions.length) continue;
+                if (targetRegions.length === 0) continue;
 
                 const isOtboy = /отбой|снята|завершена|отменена|угроза снята|нет угрозы/i.test(text);
                 const isRocket = /ракетн|баллистическ|крылат.*ракет/i.test(text);
+                const isDroneAlert = /тревога по бпла|фиксация бпла|фиксации бпла|тревога бпла|внимание.*бпла/i.test(text);
                 const isDrone = /бпла|беспилот|дрон/i.test(text);
-                const isDroneAlert = /тревога по бпла|фиксация бпла|фиксации бпла|тревога бпла/i.test(text);
 
                 for (const region of targetRegions) {
                     const state = newStatus[region];
                     if (!state) continue;
 
-                    // Отбой
                     if (isOtboy) {
                         if (isRocket) {
-                            if (postTime > state.lastRocketPost) {
+                            if (postTime >= state.lastRocketTime) {
                                 state.rocket = false;
-                                state.lastRocketPost = postTime;
+                                state.lastRocketTime = 0;
                             }
-                        } else if (isDrone) {
-                            if (postTime > state.lastDronePost) {
+                        } 
+                        else if (isDroneAlert) {
+                            if (postTime >= state.lastDroneAlertTime) {
+                                state.droneAlert = false;
+                                state.lastDroneAlertTime = 0;
+                            }
+                        }
+                        else if (isDrone) {
+                            if (postTime >= state.lastDroneTime) {
                                 state.drone = false;
                                 state.droneAlert = false;
-                                state.lastDronePost = postTime;
+                                state.lastDroneTime = 0;
+                                state.lastDroneAlertTime = 0;
                             }
-                        } else {
-                            if (postTime > state.lastRocketPost) {
-                                state.rocket = false;
-                                state.lastRocketPost = postTime;
-                            }
-                            if (postTime > state.lastDronePost) {
-                                state.drone = false;
-                                state.droneAlert = false;
-                                state.lastDronePost = postTime;
+                        }
+                        else {
+                            const times = [
+                                { type: 'rocket', time: state.lastRocketTime, set: 'rocket' },
+                                { type: 'droneAlert', time: state.lastDroneAlertTime, set: 'droneAlert' },
+                                { type: 'drone', time: state.lastDroneTime, set: 'drone' }
+                            ];
+                            const latest = times.reduce((max, t) => t.time > max.time ? t : max, { time: -1 });
+                            if (latest.time > 0) {
+                                if (latest.set === 'rocket') {
+                                    state.rocket = false;
+                                    state.lastRocketTime = 0;
+                                } else if (latest.set === 'droneAlert') {
+                                    state.droneAlert = false;
+                                    state.lastDroneAlertTime = 0;
+                                } else if (latest.set === 'drone') {
+                                    state.drone = false;
+                                    state.droneAlert = false;
+                                    state.lastDroneTime = 0;
+                                    state.lastDroneAlertTime = 0;
+                                }
                             }
                         }
                         continue;
                     }
 
-                    // Установка тревог
-                    if (isDroneAlert && state.drone) {
-                        if (postTime > state.lastDronePost) {
-                            state.droneAlert = true;
-                            state.lastDronePost = postTime;
-                        }
-                    }
                     if (isRocket) {
-                        if (postTime > state.lastRocketPost) {
+                        if (postTime > state.lastRocketTime) {
                             state.rocket = true;
-                            state.lastRocketPost = postTime;
+                            state.lastRocketTime = postTime;
                         }
                     }
-                    if (isDrone) {
-                        if (postTime > state.lastDronePost) {
+                    if (isDroneAlert) {
+                        if (postTime > state.lastDroneAlertTime) {
+                            state.droneAlert = true;
+                            state.lastDroneAlertTime = postTime;
+                            if (postTime > state.lastDroneTime) {
+                                state.drone = true;
+                                state.lastDroneTime = postTime;
+                            }
+                        }
+                    }
+                    if (isDrone && !isDroneAlert) {
+                        if (postTime > state.lastDroneTime) {
                             state.drone = true;
-                            state.lastDronePost = postTime;
+                            state.lastDroneTime = postTime;
                         }
                     }
                 }
             }
 
-            // Обновляем глобальное состояние
             regionStatus = {};
             for (const region of Object.keys(newStatus)) {
                 regionStatus[region] = {
                     drone: newStatus[region].drone,
                     droneAlert: newStatus[region].droneAlert,
-                    rocket: newStatus[region].rocket
+                    rocket: newStatus[region].rocket,
+                    lastDroneTime: newStatus[region].lastDroneTime,
+                    lastDroneAlertTime: newStatus[region].lastDroneAlertTime,
+                    lastRocketTime: newStatus[region].lastRocketTime
                 };
             }
 
@@ -610,7 +632,9 @@
                 let name = f.properties?.name || f.properties?.NAME || f.properties?.admin_name || "";
                 if (name) {
                     layer.regionName = name;
-                    if (!regionStatus[name]) regionStatus[name] = { drone: false, droneAlert: false, rocket: false };
+                    if (!regionStatus[name]) {
+                        regionStatus[name] = { drone: false, droneAlert: false, rocket: false, lastDroneTime:0, lastDroneAlertTime:0, lastRocketTime:0 };
+                    }
                     const { drone, droneAlert, rocket } = regionStatus[name];
                     layer.bindPopup(getPopupContent(name, drone, droneAlert, rocket), { className: 'custom-popup' });
                 }
@@ -619,7 +643,7 @@
         
         polygonsLayer.eachLayer(layer => {
             if (layer.regionName && !regionStatus[layer.regionName]) {
-                regionStatus[layer.regionName] = { drone: false, droneAlert: false, rocket: false };
+                regionStatus[layer.regionName] = { drone: false, droneAlert: false, rocket: false, lastDroneTime:0, lastDroneAlertTime:0, lastRocketTime:0 };
             }
         });
         
@@ -652,10 +676,13 @@
         try {
             const saved = JSON.parse(cached);
             for (let reg in saved) {
-                if (!regionStatus[reg]) regionStatus[reg] = { drone: false, droneAlert: false, rocket: false };
+                if (!regionStatus[reg]) regionStatus[reg] = { drone: false, droneAlert: false, rocket: false, lastDroneTime:0, lastDroneAlertTime:0, lastRocketTime:0 };
                 regionStatus[reg].drone = saved[reg].drone || false;
                 regionStatus[reg].droneAlert = saved[reg].droneAlert || false;
                 regionStatus[reg].rocket = saved[reg].rocket || false;
+                if (saved[reg].lastDroneTime) regionStatus[reg].lastDroneTime = saved[reg].lastDroneTime;
+                if (saved[reg].lastDroneAlertTime) regionStatus[reg].lastDroneAlertTime = saved[reg].lastDroneAlertTime;
+                if (saved[reg].lastRocketTime) regionStatus[reg].lastRocketTime = saved[reg].lastRocketTime;
             }
         } catch(e) {}
     }
