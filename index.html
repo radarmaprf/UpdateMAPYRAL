@@ -1,10 +1,9 @@
-
 <!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Air Alert Map — locatorru</title>
+    <title>Air Alert Map — vrv_radar + locatorru + bplarussiaru</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -188,12 +187,12 @@
         attribution: '', subdomains: 'abcd', maxZoom: 10, minZoom: 2
     }).addTo(map);
 
-    let regionStatus = {};
+    let regionStatus = {}; // { region: { drone, droneAlert, rocket } }
     const colors = {
         clear: "#6c757d",
-        drone: "#ffc107",
-        droneAlert: "#ff0000",
-        rocket: "#800020"
+        drone: "#ffc107",      // жёлтая опасность БПЛА
+        droneAlert: "#ff0000", // красная тревога по БПЛА
+        rocket: "#800020"      // бордовая ракетная
     };
     let polygonsLayer = null;
 
@@ -311,6 +310,7 @@
     }
 
     // =========================== РАСШИРЕННЫЕ СИНОНИМЫ РЕГИОНОВ ===========================
+    // ИСПРАВЛЕНО: "Белгородскаяы область" -> "Белгородская область"
     const regionAliases = {
         "Московская область": ["москва","мск","город москва","московская область","подмосковье","мо обл","московской обл","московская обл","московской области"],
         "Санкт-Петербург": ["санкт-петербург","питер","спб","ленинград"],
@@ -380,8 +380,12 @@
     };
     const allRegionNames = Object.keys(regionAliases);
 
-    // =========================== ОДИН КАНАЛ: locatorru ===========================
-    const channel = { name: "locatorru", url: "https://t.me/s/locatorru" };
+    // =========================== ТРИ КАНАЛА ===========================
+    const channels = [
+        { name: "vrv_radar", url: "https://t.me/s/vrv_radar" },
+        { name: "locatorru", url: "https://t.me/s/locatorru" },
+        { name: "bplarussiaru", url: "https://t.me/s/bplarussiaru" }
+    ];
     const proxies = [
         "https://api.allorigins.win/raw?url=",
         "https://cors-anywhere.herokuapp.com/",
@@ -403,12 +407,12 @@
         throw new Error("Все прокси недоступны");
     }
 
-    async function parseChannel() {
+    async function parseChannel(channelInfo) {
         let html = null;
         try {
-            html = await fetchWithProxy(channel.url, proxies);
+            html = await fetchWithProxy(channelInfo.url, proxies);
         } catch(e) {
-            console.warn(`Канал ${channel.name} не загрузился`, e);
+            console.warn(`Канал ${channelInfo.name} не загрузился`, e);
             return [];
         }
         if (!html) return [];
@@ -423,7 +427,7 @@
             let timestamp = new Date(datetime).getTime();
             if (isNaN(timestamp)) timestamp = 0;
             if (text) {
-                posts.push({ id, text, timestamp, channel: channel.name });
+                posts.push({ id, text, timestamp, channel: channelInfo.name });
             }
         }
         if (posts.length === 0) {
@@ -432,23 +436,32 @@
                 let id = parseInt(m[1]);
                 let text = m[2].replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
                 if (text) {
-                    posts.push({ id, text, timestamp: id, channel: channel.name });
+                    posts.push({ id, text, timestamp: id, channel: channelInfo.name });
                 }
             }
         }
-        console.log(`Канал ${channel.name}: получено ${posts.length} постов`);
-        // Сортируем от старых к новым для правильной обработки отбоев
-        posts.sort((a, b) => a.timestamp - b.timestamp);
+        console.log(`Канал ${channelInfo.name}: получено ${posts.length} постов`);
         return posts;
     }
 
-    // =========================== ОСНОВНОЕ ОБНОВЛЕНИЕ ===========================
+    async function getAllPosts() {
+        const allPosts = [];
+        for (const channel of channels) {
+            const posts = await parseChannel(channel);
+            allPosts.push(...posts);
+        }
+        allPosts.sort((a, b) => b.timestamp - a.timestamp);
+        console.log(`Всего постов: ${allPosts.length}`);
+        return allPosts;
+    }
+
+    // =========================== ОСНОВНОЕ ОБНОВЛЕНИЕ (с блокировкой ракетной опасности для Белгородской области) ===========================
     async function refreshAlerts() {
         const statusDiv = document.getElementById('status');
         statusDiv.innerHTML = '🔄 Обновление...';
 
         try {
-            const posts = await parseChannel();
+            const posts = await getAllPosts();
             const newStatus = {};
 
             allRegionNames.forEach(region => {
@@ -461,6 +474,7 @@
                 };
             });
 
+            // Расширенные регулярные выражения для поиска тревог по БПЛА
             for (const post of posts) {
                 const text = post.text;
                 const postTime = post.timestamp;
@@ -479,15 +493,20 @@
                 const targetRegions = isAllRegions ? allRegionNames : [...matchedRegions];
                 if (!targetRegions.length) continue;
 
-                const isOtboy = /отбой|снята|завершена|отменена|угроза снята|нет угрозы/i.test(text);
-                const isRocket = /ракетн|баллистическ|крылат.*ракет/i.test(text);
-                const isDrone = /бпла|беспилот|дрон/i.test(text);
-                const isDroneAlert = /тревога по бпла|фиксация бпла|фиксации бпла|тревога бпла/i.test(text);
+                // Улучшенные флаги
+                const isOtboy = /отбой|снята|завершена|отменена|угроза снята|нет угрозы|отбой тревоги/i.test(text);
+                // Ракетная опасность (ключевые слова)
+                const isRocket = /ракетн|баллистическ|крылат.*ракет|ракетная опасность/i.test(text);
+                // БПЛА: добавлены синонимы "беспилотник", "дроны", "угроза бпла" и т.д.
+                const isDrone = /\b(бпла|беспилот|дрон|дроны|беспилотник|бпла\s+угроза|угроза\s+бпла|бпла\s+тревога|дрон\s+опасность)\b/i.test(text);
+                // Тревога по БПЛА (более сильный уровень)
+                const isDroneAlert = /тревога по бпла|фиксация бпла|фиксации бпла|тревога бпла|бпла тревога|внимание бпла|объявлена тревога бпла/i.test(text);
 
                 for (const region of targetRegions) {
                     const state = newStatus[region];
                     if (!state) continue;
 
+                    // Отбой
                     if (isOtboy) {
                         if (isRocket) {
                             if (postTime > state.lastRocketPost) {
@@ -514,13 +533,17 @@
                         continue;
                     }
 
+                    // Установка тревог (с защитой для Белгородской области)
+                    const isBelgorod = (region === "Белгородская область");
+
                     if (isDroneAlert && state.drone) {
                         if (postTime > state.lastDronePost) {
                             state.droneAlert = true;
                             state.lastDronePost = postTime;
                         }
                     }
-                    if (isRocket) {
+                    // Ракетная опасность — пропускаем для Белгородской области
+                    if (isRocket && !isBelgorod) {
                         if (postTime > state.lastRocketPost) {
                             state.rocket = true;
                             state.lastRocketPost = postTime;
@@ -535,6 +558,7 @@
                 }
             }
 
+            // Обновляем глобальное состояние
             regionStatus = {};
             for (const region of Object.keys(newStatus)) {
                 regionStatus[region] = {
@@ -542,6 +566,10 @@
                     droneAlert: newStatus[region].droneAlert,
                     rocket: newStatus[region].rocket
                 };
+            }
+            // Дополнительная страховка: в Белгородской области rocket всегда false
+            if (regionStatus["Белгородская область"]) {
+                regionStatus["Белгородская область"].rocket = false;
             }
 
             updateAllPolygons();
@@ -635,6 +663,8 @@
                 regionStatus[reg].droneAlert = saved[reg].droneAlert || false;
                 regionStatus[reg].rocket = saved[reg].rocket || false;
             }
+            // Принудительно обнуляем rocket для Белгородской области при загрузке кэша
+            if (regionStatus["Белгородская область"]) regionStatus["Белгородская область"].rocket = false;
         } catch(e) {}
     }
     
