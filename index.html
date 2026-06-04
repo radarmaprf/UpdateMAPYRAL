@@ -19,6 +19,42 @@
         .status { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 2000; background: rgba(0,0,0,0.7); backdrop-filter: blur(8px); border-radius: 20px; padding: 4px 14px; color: #ccc; font-size: 0.7rem; font-family: monospace; white-space: nowrap; text-align: center; }
         .alert-list-btn { position: fixed; top: 20px; left: 20px; z-index: 2000; background: rgba(220,53,69,0.9); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.3); border-radius: 40px; padding: 8px 18px; color: white; font-size: 0.9rem; font-weight: bold; cursor: pointer; font-family: monospace; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
         .alert-list-btn:hover { background: #b02a37; transform: scale(1.02); }
+        
+        /* Панель линейки */
+        .toolbar {
+            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+            z-index: 2000; display: flex; gap: 12px; background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(12px); padding: 8px 16px; border-radius: 40px;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        .tool-btn {
+            background: rgba(30,35,50,0.9); border: none; color: white;
+            padding: 6px 16px; border-radius: 30px; font-size: 0.85rem;
+            font-weight: bold; cursor: pointer; transition: 0.2s;
+            font-family: monospace; letter-spacing: 0.5px;
+        }
+        .tool-btn.active { background: #28a745; box-shadow: 0 0 8px #28a745; }
+        .tool-btn:hover { background: #28a745; transform: scale(1.02); }
+        .tool-btn.danger { background: #dc3545; }
+        .tool-btn.danger:hover { background: #b02a37; }
+        
+        .ruler-panel {
+            position: fixed; top: 80px; left: 20px; z-index: 2100;
+            background: rgba(10,14,26,0.95); backdrop-filter: blur(12px);
+            border-radius: 16px; padding: 12px 18px; width: 260px;
+            border: 1px solid rgba(255,255,255,0.2); display: none;
+            flex-direction: column; gap: 10px; font-family: monospace;
+        }
+        .ruler-panel.show { display: flex; }
+        .ruler-panel h4 { margin: 0 0 5px 0; color: #ffc107; font-size: 1rem; }
+        .threat-select {
+            background: #1a1f2e; color: white; border: 1px solid #555;
+            padding: 6px; border-radius: 8px; font-size: 0.8rem;
+        }
+        .distance-info { background: #00000055; padding: 8px; border-radius: 8px; margin-top: 5px; }
+        .distance-info p { margin: 4px 0; font-size: 0.75rem; }
+        .time-result { font-size: 1.1rem; font-weight: bold; color: #ffc107; text-align: center; }
+        
         .alerts-panel { position: fixed; top: 0; left: -320px; width: 300px; height: 100%; background: rgba(10,14,26,0.95); backdrop-filter: blur(12px); z-index: 3000; transition: left 0.3s ease; border-right: 1px solid rgba(255,255,255,0.2); display: flex; flex-direction: column; font-family: monospace; box-shadow: 2px 0 20px rgba(0,0,0,0.5); }
         .alerts-panel.open { left: 0; }
         .panel-header { padding: 20px 16px; border-bottom: 1px solid rgba(255,255,255,0.2); display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.5); }
@@ -43,6 +79,9 @@
         @keyframes fadeOut { 0% { opacity: 1; } 70% { opacity: 1; } 100% { opacity: 0; visibility: hidden; } }
         .custom-popup .leaflet-popup-content-wrapper { background: #1a1f2e; color: #e8eef2; border-radius: 12px; border-left: 4px solid; }
         .leaflet-control-attribution { display: none !important; }
+        .leaflet-interactive-off {
+            pointer-events: none !important;
+        }
         @media (max-width: 600px) {
             .time-main { font-size: 1.2rem; }
             .clock { padding: 4px 12px; top: 10px; right: 10px; }
@@ -51,12 +90,22 @@
             .alert-list-btn { top: 10px; left: 10px; padding: 5px 14px; font-size: 0.8rem; }
             .alerts-panel { width: 85%; left: -85%; }
             .copy-btn { font-size: 0.9rem; padding: 2px 8px; }
+            .toolbar { top: 70px; padding: 4px 10px; gap: 6px; }
+            .tool-btn { padding: 4px 12px; font-size: 0.7rem; }
+            .ruler-panel { width: 220px; top: 110px; left: 10px; }
         }
     </style>
 </head>
 <body>
 <div class="clock"><div class="time-main" id="liveTime">--:--</div><div class="date" id="liveDate">--</div></div>
 <button class="alert-list-btn" id="openPanelBtn">⚠️ Список тревог</button>
+
+<!-- Панель инструментов линейки -->
+<div class="toolbar">
+    <button id="rulerBtn" class="tool-btn">📏 Линейка (on/off)</button>
+    <button id="clearRulerBtn" class="tool-btn danger">🗑 Сбросить</button>
+</div>
+
 <div class="legend">
     <div class="legend-item"><div class="legend-color" style="background: #6c757d;"></div> <span>⚪ Отбой / Спокойно</span></div>
     <div class="legend-item"><div class="legend-color" style="background: #ffc107;"></div> <span>🟡 Опасность БПЛА</span></div>
@@ -65,6 +114,24 @@
 </div>
 <button class="update-btn" id="updateBtn">🔄 Обновить</button>
 <div class="status" id="status">Загрузка...</div>
+
+<!-- Панель линейки -->
+<div id="rulerPanel" class="ruler-panel">
+    <h4>📏 Измерение угрозы</h4>
+    <select id="threatType" class="threat-select">
+        <option value="drone">🛩 Обычный БПЛА (180 км/ч)</option>
+        <option value="jet_drone">🚀 Реактивный БПЛА (450 км/ч)</option>
+        <option value="cruise">✈️ Крылатая ракета (850 км/ч)</option>
+        <option value="ballistic">💥 Баллистическая ракета (9000 км/ч)</option>
+    </select>
+    <div class="distance-info">
+        <p>📏 Расстояние: <span id="distKm">0</span> км</p>
+        <p>⏱ Время подлёта:</p>
+        <div id="timeResult" class="time-result">—</div>
+    </div>
+    <small style="font-size:0.65rem; opacity:0.7;">★ Кликните по карте 2 раза — поставьте точки A и B</small>
+</div>
+
 <div id="map" style="width: 100vw; height: 100vh; position: absolute; top: 0; left: 0;"></div>
 <div id="alertsPanel" class="alerts-panel">
     <div class="panel-header"><h3>🚨 Регионы с тревогами</h3><div class="panel-actions"><button class="copy-btn" id="copyAlertsBtn">📋 Копировать</button><button class="close-panel" id="closePanelBtn">&times;</button></div></div>
@@ -76,6 +143,104 @@
         // ---------------------- КАРТА --------------------------
         const map = L.map('map').setView([62, 105], 3.8);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '', subdomains: 'abcd', maxZoom: 10, minZoom: 2 }).addTo(map);
+        
+        // ---------------------- ЛИНЕЙКА --------------------------
+        let rulerModeActive = false;
+        let points = [];
+        let lineLayer = null;
+        let markersLayer = null;
+        
+        const speeds = { drone: 180, jet_drone: 450, cruise: 850, ballistic: 9000 };
+        
+        function calculateTime(distanceKm, speedKmh) {
+            if (distanceKm <= 0) return "0 мин";
+            const hours = distanceKm / speedKmh;
+            const totalMinutes = hours * 60;
+            if (totalMinutes < 1) return "< 1 мин";
+            const hrs = Math.floor(totalMinutes / 60);
+            const mins = Math.floor(totalMinutes % 60);
+            if (hrs > 0) return `${hrs} ч ${mins} мин`;
+            return `${mins} мин`;
+        }
+        
+        function updateRulerDisplay() {
+            if (points.length < 2) {
+                document.getElementById('distKm').innerText = '0';
+                document.getElementById('timeResult').innerHTML = '—';
+                return;
+            }
+            const dist = points[0].getLatLng().distanceTo(points[1].getLatLng()) / 1000;
+            document.getElementById('distKm').innerText = dist.toFixed(1);
+            const threat = document.getElementById('threatType').value;
+            const timeStr = calculateTime(dist, speeds[threat]);
+            document.getElementById('timeResult').innerHTML = timeStr;
+        }
+        
+        function updateRulerGraphics() {
+            if (lineLayer) map.removeLayer(lineLayer);
+            if (markersLayer) map.removeLayer(markersLayer);
+            if (points.length === 0) return;
+            markersLayer = L.layerGroup().addTo(map);
+            points.forEach(m => markersLayer.addLayer(m));
+            if (points.length === 2) {
+                const latlngs = points.map(p => p.getLatLng());
+                lineLayer = L.polyline(latlngs, { color: '#ffc107', weight: 4, dashArray: '8, 6' }).addTo(map);
+            }
+            updateRulerDisplay();
+        }
+        
+        function addRulerPoint(e) {
+            if (!rulerModeActive) return;
+            if (points.length >= 2) clearRuler();
+            const marker = L.marker(e.latlng, {
+                draggable: true,
+                icon: L.divIcon({ className: 'ruler-marker', html: `<div style="background:#ffc107; width:12px; height:12px; border-radius:50%; border:2px solid white;"></div>`, iconSize: [12,12] })
+            });
+            marker.on('dragend', () => { updateRulerGraphics(); });
+            points.push(marker);
+            updateRulerGraphics();
+        }
+        
+        function clearRuler() {
+            if (lineLayer) map.removeLayer(lineLayer);
+            if (markersLayer) map.removeLayer(markersLayer);
+            points.forEach(m => m.remove());
+            points = [];
+            lineLayer = null;
+            markersLayer = null;
+            updateRulerDisplay();
+        }
+        
+        function setRulerMode(active) {
+            rulerModeActive = active;
+            const rulerBtn = document.getElementById('rulerBtn');
+            const panel = document.getElementById('rulerPanel');
+            
+            if (active) {
+                rulerBtn.classList.add('active');
+                panel.classList.add('show');
+                map.getContainer().style.cursor = 'crosshair';
+                // Отключаем клики по полигонам
+                if (polygonsLayer) {
+                    polygonsLayer.eachLayer(layer => {
+                        if (layer._path) layer._path.classList.add('leaflet-interactive-off');
+                    });
+                }
+                map.on('click', addRulerPoint);
+            } else {
+                rulerBtn.classList.remove('active');
+                panel.classList.remove('show');
+                map.getContainer().style.cursor = '';
+                map.off('click', addRulerPoint);
+                // Восстанавливаем клики по полигонам
+                if (polygonsLayer) {
+                    polygonsLayer.eachLayer(layer => {
+                        if (layer._path) layer._path.classList.remove('leaflet-interactive-off');
+                    });
+                }
+                clearRuler();
+            }
+        }
         
         // ---------------------- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ------------------
         let polygonsLayer = null;
@@ -553,6 +718,10 @@
         }, 2000);
         
         document.getElementById('updateBtn').addEventListener('click', () => refreshAlerts());
+        document.getElementById('rulerBtn').addEventListener('click', () => setRulerMode(!rulerModeActive));
+        document.getElementById('clearRulerBtn').addEventListener('click', () => clearRuler());
+        document.getElementById('threatType').addEventListener('change', () => updateRulerDisplay());
+        
         const panel = document.getElementById('alertsPanel');
         document.getElementById('openPanelBtn').addEventListener('click', () => { panel.classList.add('open'); updateAlertsPanel(); });
         document.getElementById('closePanelBtn').addEventListener('click', () => panel.classList.remove('open'));
