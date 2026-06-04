@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+p<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
@@ -187,14 +187,13 @@
         attribution: '', subdomains: 'abcd', maxZoom: 10, minZoom: 2
     }).addTo(map);
 
-    // Структура статуса региона:
-    // { droneDanger: false, droneAlert: false, rocketDanger: false }
+    // Структура статуса региона
     let regionStatus = {};
     const colors = { 
         clear: "#6c757d", 
-        droneDanger: "#ffc107",      // жёлтый — опасность БПЛА
-        droneAlert: "#dc3545",       // красный — тревога БПЛА (фиксация/ПВО)
-        rocket: "#8B0000"            // бордовый — ракетная опасность
+        droneDanger: "#ffc107",
+        droneAlert: "#dc3545",
+        rocket: "#8B0000"
     };
     let polygonsLayer = null;
 
@@ -246,8 +245,7 @@
             const name = layer.regionName;
             if (name && regionStatus[name]) {
                 const st = regionStatus[name];
-                const fillColor = getFillColor(st);
-                layer.setStyle({ fillColor, fillOpacity: 0.7 });
+                layer.setStyle({ fillColor: getFillColor(st), fillOpacity: 0.7 });
                 layer.getPopup().setContent(getPopupContent(name, st));
             }
         });
@@ -275,7 +273,6 @@
         `).join('');
     }
 
-    // Функция получения текущей даты и времени для вставки в копируемый текст
     function getCurrentDateTimeString() {
         const now = new Date();
         const day = now.getDate().toString().padStart(2,'0');
@@ -287,35 +284,23 @@
     }
 
     async function copyAlertsList() {
-        // Собираем активные тревоги с приоритетами (как в панели)
         const active = [];
         for (const [region, flags] of Object.entries(regionStatus)) {
-            if (flags.rocket) {
-                active.push({ name: region, label: '🟤 Ракетная опасность', priority: 1 });
-            } else if (flags.droneAlert) {
-                active.push({ name: region, label: '🔴 Тревога БПЛА (фиксация/работа ПВО)', priority: 2 });
-            } else if (flags.droneDanger) {
-                active.push({ name: region, label: '🟡 Опасность БПЛА', priority: 3 });
-            }
+            if (flags.rocket) active.push({ name: region, label: '🟤 Ракетная опасность', priority: 1 });
+            else if (flags.droneAlert) active.push({ name: region, label: '🔴 Тревога БПЛА (фиксация/работа ПВО)', priority: 2 });
+            else if (flags.droneDanger) active.push({ name: region, label: '🟡 Опасность БПЛА', priority: 3 });
         }
-        
         if (active.length === 0) {
             showToast("✨ Нет активных тревог для копирования");
             return;
         }
-        
-        // Сортируем: сначала ракетные (priority 1), потом тревоги БПЛА (2), потом опасность БПЛА (3)
         active.sort((a,b) => a.priority - b.priority);
-        
-        // Формируем строки
         const lines = active.map(item => `${item.label}: ${item.name}`);
-        const dateTimeStr = getCurrentDateTimeString();
-        const header = `📅 Активные тревоги на ${dateTimeStr}`;
+        const header = `📅 Активные тревоги на ${getCurrentDateTimeString()}`;
         const textToCopy = [header, ...lines].join('\n');
-        
         try {
             await navigator.clipboard.writeText(textToCopy);
-            showToast(`📋 Скопировано ${active.length} тревог (с датой/временем)`);
+            showToast(`📋 Скопировано ${active.length} тревог`);
         } catch {
             const textarea = document.createElement('textarea');
             textarea.value = textToCopy;
@@ -323,7 +308,7 @@
             textarea.select();
             document.execCommand('copy');
             document.body.removeChild(textarea);
-            showToast(`📋 Скопировано ${active.length} тревог (с датой/временем)`);
+            showToast(`📋 Скопировано ${active.length} тревог`);
         }
     }
 
@@ -337,7 +322,7 @@
         setTimeout(() => toast.remove(), 2000);
     }
 
-    // =========================== РАСШИРЕННЫЕ СИНОНИМЫ РЕГИОНОВ ===========================
+    // =========================== СИНОНИМЫ РЕГИОНОВ ===========================
     const regionAliases = {
         "Московская область": ["москва","мск","город москва","московская область","подмосковье","мо обл","московской обл","московская обл","московской области"],
         "Санкт-Петербург": ["санкт-петербург","питер","спб","ленинград"],
@@ -380,7 +365,7 @@
         "Удмуртская Республика": ["удмуртия","ижевск"],
         "Чувашия": ["чувашская республика","чебоксары"],
         "Марий Эл": ["республика марий эл","йошкар-ола"],
-        "Республика Мордовия": ["республика мордовия","саранск"],
+        "Мордовия": ["республика мордовия","саранск"],
         "Кировская область": ["киров","кировская область","кировской области"],
         "Ульяновская область": ["ульяновск","ульяновская область","ульяновской области"],
         "Пензенская область": ["пенза","пензенская область","пензенской области"],
@@ -407,7 +392,7 @@
     };
     const allRegionNames = Object.keys(regionAliases);
 
-    // =========================== УЛУЧШЕННЫЙ ПАРСИНГ TELEGRAM ===========================
+    // =========================== ПАРСИНГ TELEGRAM (улучшенный) ===========================
     const proxies = [
         "https://api.allorigins.win/raw?url=",
         "https://cors-anywhere.herokuapp.com/",
@@ -441,7 +426,8 @@
         }
         if (!html) return [];
 
-        const regex = /data-post="(?:locatorru|radarrussiia|radaryral)\/(\d+)".*?tgme_widget_message_text[^>]*>(.*?)<\/div>/gis;
+        // Ищем как текст сообщений, так и подписи к картинкам (caption)
+        const regex = /data-post="(?:locatorru|radarrussiia|radaryral)\/(\d+)".*?(?:tgme_widget_message_text|tgme_widget_message_caption)[^>]*>(.*?)<\/div>/gis;
         const posts = [];
         let m;
         while ((m = regex.exec(html)) !== null) {
@@ -450,9 +436,15 @@
                 posts.push({ id: parseInt(m[1]), text });
             }
         }
-        posts.sort((a,b) => a.id - b.id);
-        console.log(`Получено постов: ${posts.length}`);
-        return posts;
+        // Убираем дубликаты по id (оставляем первый попавшийся текст)
+        const unique = new Map();
+        for (const p of posts) {
+            if (!unique.has(p.id)) unique.set(p.id, p);
+        }
+        const uniquePosts = Array.from(unique.values());
+        uniquePosts.sort((a,b) => a.id - b.id);
+        console.log(`Получено постов: ${uniquePosts.length}`);
+        return uniquePosts;
     }
 
     function extractRegions(text, allNames) {
@@ -470,6 +462,14 @@
 
     function classifyEvent(text) {
         const lower = text;
+        
+        // Глобальный отбой БПЛА во всех регионах
+        const isGlobalDroneCancel = /отбой.*бпла.*всех.*регион/i.test(lower) ||
+                                    /отбой опасности по бпла во всех ранее объявленных регионах/i.test(lower);
+        if (isGlobalDroneCancel) {
+            return { type: 'globalCancelDrone' };
+        }
+        
         const isRocket = /ракетн(?:ая|ую|ой|ая)\s*(?:опасность|тревога)|баллистическ(?:ая|ую)|крылат(?:ая|ую)/i.test(lower);
         const isDroneDanger = /бпла|беспилотн(?:ик|ый|ая)|опасность\s*бпла|угроза\s*бпла/i.test(lower);
         const isFixation = /фиксаци[яи]|работа\s*пво|пво\s*работает|заходит группа|сбитие|тревога/i.test(lower);
@@ -485,21 +485,26 @@
         }
         
         if (isRocket) return { type: 'alert', danger: 'rocket' };
-        
-        if (isFixation) {
-            return { type: 'droneAlert', danger: 'drone' };
-        }
-        
-        if (isDroneDanger) {
-            return { type: 'alert', danger: 'drone' };
-        }
+        if (isFixation) return { type: 'droneAlert', danger: 'drone' };
+        if (isDroneDanger) return { type: 'alert', danger: 'drone' };
         
         return null;
     }
 
     function applyEvent(regions, event, currentStatus) {
+        // Глобальный отбой БПЛА
+        if (event.type === 'globalCancelDrone') {
+            for (const reg of Object.keys(currentStatus)) {
+                currentStatus[reg].droneDanger = false;
+                currentStatus[reg].droneAlert = false;
+            }
+            return;
+        }
+        
         for (const region of regions) {
-            if (!currentStatus[region]) currentStatus[region] = { droneDanger: false, droneAlert: false, rocketDanger: false };
+            if (!currentStatus[region]) {
+                currentStatus[region] = { droneDanger: false, droneAlert: false, rocketDanger: false };
+            }
             const st = currentStatus[region];
             
             if (event.type === 'alert') {
@@ -536,18 +541,31 @@
             const posts = await parseTelegramAlerts();
             if (posts.length === 0) throw new Error("Нет постов");
             
-            const newStatus = JSON.parse(JSON.stringify(regionStatus));
+            // Строим новый статус с нуля
+            const newStatus = {};
+            for (const region of allRegionNames) {
+                newStatus[region] = {
+                    droneDanger: false,
+                    droneAlert: false,
+                    rocketDanger: false
+                };
+            }
             
             for (const post of posts) {
                 const text = post.text;
                 const regions = extractRegions(text, allRegionNames);
-                if (regions.length === 0) continue;
-                
                 const event = classifyEvent(text);
                 if (!event) continue;
                 
-                applyEvent(regions, event, newStatus);
-                console.log(`Пост ${post.id}: ${event.type} ${event.danger || ''} для [${regions.join(', ')}]`);
+                // Для глобального отбоя регионы не нужны, он обработается внутри applyEvent
+                if (event.type === 'globalCancelDrone') {
+                    applyEvent([], event, newStatus);
+                    console.log(`Глобальный отбой БПЛА по всем регионам`);
+                } else {
+                    if (regions.length === 0) continue;
+                    applyEvent(regions, event, newStatus);
+                    console.log(`Пост ${post.id}: ${event.type} ${event.danger || ''} для [${regions.join(', ')}]`);
+                }
             }
             
             regionStatus = newStatus;
@@ -624,6 +642,7 @@
     });
 
     // =========================== ИНИЦИАЛИЗАЦИЯ ===========================
+    // Загружаем кэш, но он будет перезаписан при первом обновлении
     const cached = localStorage.getItem("alertCache");
     if (cached) {
         try {
