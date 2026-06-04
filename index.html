@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Air Alert Map — Тревоги РФ (один канал)</title>
+    <title>Air Alert Map — Тревоги РФ</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -20,6 +20,7 @@
         .alert-list-btn { position: fixed; top: 20px; left: 20px; z-index: 2000; background: rgba(220,53,69,0.9); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.3); border-radius: 40px; padding: 8px 18px; color: white; font-size: 0.9rem; font-weight: bold; cursor: pointer; font-family: monospace; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
         .alert-list-btn:hover { background: #b02a37; transform: scale(1.02); }
         
+        /* Панель линейки */
         .toolbar {
             position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
             z-index: 2000; display: flex; gap: 12px; background: rgba(0,0,0,0.7);
@@ -99,6 +100,7 @@
 <div class="clock"><div class="time-main" id="liveTime">--:--</div><div class="date" id="liveDate">--</div></div>
 <button class="alert-list-btn" id="openPanelBtn">⚠️ Список тревог</button>
 
+<!-- Панель инструментов линейки -->
 <div class="toolbar">
     <button id="rulerBtn" class="tool-btn">📏 Линейка (on/off)</button>
     <button id="clearRulerBtn" class="tool-btn danger">🗑 Сбросить</button>
@@ -113,6 +115,7 @@
 <button class="update-btn" id="updateBtn">🔄 Обновить</button>
 <div class="status" id="status">Загрузка...</div>
 
+<!-- Панель линейки -->
 <div id="rulerPanel" class="ruler-panel">
     <h4>📏 Измерение угрозы</h4>
     <select id="threatType" class="threat-select">
@@ -217,6 +220,7 @@
                 rulerBtn.classList.add('active');
                 panel.classList.add('show');
                 map.getContainer().style.cursor = 'crosshair';
+                // Отключаем клики по полигонам
                 if (polygonsLayer) {
                     polygonsLayer.eachLayer(layer => {
                         if (layer._path) layer._path.classList.add('leaflet-interactive-off');
@@ -228,6 +232,7 @@
                 panel.classList.remove('show');
                 map.getContainer().style.cursor = '';
                 map.off('click', addRulerPoint);
+                // Восстанавливаем клики по полигонам
                 if (polygonsLayer) {
                     polygonsLayer.eachLayer(layer => {
                         if (layer._path) layer._path.classList.remove('leaflet-interactive-off');
@@ -239,12 +244,22 @@
         
         // ---------------------- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ------------------
         let polygonsLayer = null;
-        let regionStatus = {};
-        let lastPostId = 0;
-        const channel = { name: 'radaryraltest', url: 'https://t.me/s/radaryraltest' };
-        
+        let regionStatus = {};          // regionStatus[region][channel] = { droneDanger, droneAlert, rocketDanger, explicitCancel }
+        let lastPostId = { locatorru: 0, radarrussiia: 0 };
+        const channels = [
+            { name: 'locatorru', url: 'https://t.me/s/locatorru', rss: true },
+            { name: 'radarrussiia', url: 'https://t.me/s/radarrussiia', rss: true }
+        ];
         const colors = { clear: "#6c757d", droneDanger: "#ffc107", droneAlert: "#dc3545", rocket: "#8B0000" };
         let lastUpdateTime = null;
+        
+        // Прокси для CORS (RSS тоже нужен прокси из-за политики)
+        const proxies = [
+            "https://api.allorigins.win/raw?url=",
+            "https://corsproxy.io/?",
+            "https://cors-anywhere.herokuapp.com/",
+            "https://thingproxy.freeboard.io/fetch/"
+        ];
         
         // ---------------------- НОРМАЛИЗАЦИЯ ИМЁН РЕГИОНОВ ------------------
         const geoNameMapping = {
@@ -280,6 +295,7 @@
             return geoNameMapping[geoName] || geoName;
         }
         
+        // Все возможные официальные имена (алиасы для поиска в тексте)
         const regionAliases = {
             "Московская область": ["москва","мск","московская область","подмосковье"],
             "Ленинградская область": ["ленинградская область","ленобласть","спб","санкт-петербург"],
@@ -347,46 +363,31 @@
         const allRegionNames = Object.keys(regionAliases);
         
         // ---------------------- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ------------------
-        function initialStatus() {
+        function initialChannelStatus() {
             return { droneDanger: false, droneAlert: false, rocketDanger: false, explicitCancel: false };
         }
         
-        // Функция получения RSS через прокси (рабочая версия)
-        async function fetchRSSWithProxy(channelUrl) {
-            const rssUrl = channelUrl + '?embed=1&mode=rss';
-            const proxies = [
-                "https://api.allorigins.win/raw?url=",
-                "https://corsproxy.io/?",
-                "https://cors-anywhere.herokuapp.com/"
-            ];
-            
-            for (let proxy of proxies) {
+        async function fetchWithProxy(url, proxyList) {
+            for (let proxy of proxyList) {
                 try {
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 10000);
-                    const proxyUrl = proxy + encodeURIComponent(rssUrl);
-                    const response = await fetch(proxyUrl, {
-                        signal: controller.signal,
-                        headers: {
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-                        }
-                    });
+                    const timeoutId = setTimeout(() => controller.abort(), 8000);
+                    const proxyUrl = proxy + encodeURIComponent(url);
+                    const response = await fetch(proxyUrl, { signal: controller.signal });
                     clearTimeout(timeoutId);
                     if (response.ok) {
                         const text = await response.text();
-                        if (text && text.includes('<rss') && text.includes('<item')) {
-                            return text;
-                        }
+                        if (text && text.length > 500) return text;
                     }
-                } catch(e) {
-                    console.warn(`Прокси ${proxy} не сработал`, e);
-                }
+                } catch(e) { console.warn(`Прокси ${proxy} не сработал`, e); }
             }
-            throw new Error("Не удалось получить RSS через доступные прокси");
+            throw new Error("Все прокси недоступны");
         }
         
-        async function fetchPosts() {
-            const xmlText = await fetchRSSWithProxy(channel.url);
+        // Получение RSS ленты канала
+        async function fetchRSS(channelUrl) {
+            const rssUrl = channelUrl + '?embed=1&mode=rss';
+            const xmlText = await fetchWithProxy(rssUrl, proxies);
             const parser = new DOMParser();
             const doc = parser.parseFromString(xmlText, 'text/xml');
             const items = doc.querySelectorAll('item');
@@ -401,7 +402,6 @@
                 const text = (title + ' ' + description).toLowerCase();
                 posts.push({ id, text });
             }
-            if (posts.length === 0) throw new Error("Нет постов в RSS");
             posts.sort((a,b) => a.id - b.id);
             return posts;
         }
@@ -421,6 +421,7 @@
         
         function classifyEvent(text) {
             const lower = text;
+            // Расширенные шаблоны глобального отбоя БПЛА
             const isGlobalDroneCancel = /отбой.*бпла.*(всех|всех ранее|всех регионах|везде|повсеместно)/i.test(lower) ||
                                         /снята угроза бпла во всех регионах/i.test(lower) ||
                                         /опасность бпла отменена повсеместно/i.test(lower);
@@ -440,79 +441,105 @@
             }
             
             if (isRocket) return { type: 'alert', danger: 'rocket' };
+            // Тревога БПЛА (фиксация/ПВО) должна включать и опасность, и тревогу
             if (isFixation) return { type: 'droneAlert' };
             if (isDroneDanger) return { type: 'alert', danger: 'drone' };
             return null;
         }
         
-        function applyEvent(regions, event, statusMap) {
+        function applyEvent(regions, event, channelStatus, channelName) {
             if (event.type === 'globalCancelDrone') {
                 for (const reg of allRegionNames) {
-                    if (!statusMap[reg]) statusMap[reg] = initialStatus();
-                    statusMap[reg].droneDanger = false;
-                    statusMap[reg].droneAlert = false;
-                    statusMap[reg].explicitCancel = true;
+                    if (!channelStatus[reg]) channelStatus[reg] = initialChannelStatus();
+                    channelStatus[reg].droneDanger = false;
+                    channelStatus[reg].droneAlert = false;
+                    channelStatus[reg].explicitCancel = true;
                 }
                 return;
             }
             if (event.type === 'cancel') {
                 for (const reg of regions) {
-                    if (!statusMap[reg]) statusMap[reg] = initialStatus();
-                    if (event.danger === 'rocket') statusMap[reg].rocketDanger = false;
+                    if (!channelStatus[reg]) channelStatus[reg] = initialChannelStatus();
+                    if (event.danger === 'rocket') channelStatus[reg].rocketDanger = false;
                     if (event.danger === 'drone') {
-                        statusMap[reg].droneDanger = false;
-                        statusMap[reg].droneAlert = false;
+                        channelStatus[reg].droneDanger = false;
+                        channelStatus[reg].droneAlert = false;
                     }
                     if (event.danger === 'both') {
-                        statusMap[reg].rocketDanger = false;
-                        statusMap[reg].droneDanger = false;
-                        statusMap[reg].droneAlert = false;
+                        channelStatus[reg].rocketDanger = false;
+                        channelStatus[reg].droneDanger = false;
+                        channelStatus[reg].droneAlert = false;
                     }
-                    statusMap[reg].explicitCancel = true;
+                    channelStatus[reg].explicitCancel = true;
                 }
                 return;
             }
+            // Обычное оповещение или тревога БПЛА
             for (const reg of regions) {
-                if (!statusMap[reg]) statusMap[reg] = initialStatus();
-                statusMap[reg].explicitCancel = false;
+                if (!channelStatus[reg]) channelStatus[reg] = initialChannelStatus();
+                // Любое новое оповещение снимает флаг явного отбоя
+                channelStatus[reg].explicitCancel = false;
                 if (event.type === 'alert') {
-                    if (event.danger === 'rocket') statusMap[reg].rocketDanger = true;
-                    if (event.danger === 'drone') statusMap[reg].droneDanger = true;
+                    if (event.danger === 'rocket') channelStatus[reg].rocketDanger = true;
+                    if (event.danger === 'drone') channelStatus[reg].droneDanger = true;
                 }
                 if (event.type === 'droneAlert') {
-                    statusMap[reg].droneDanger = true;
-                    statusMap[reg].droneAlert = true;
+                    channelStatus[reg].droneDanger = true;
+                    channelStatus[reg].droneAlert = true;
                 }
             }
         }
         
-        // ---------------------- ОБНОВЛЕНИЕ КАРТЫ И ПАНЕЛИ ------------------
+        // Вычисление итогового статуса по каналам с учётом explicitCancel
+        function getEffectiveStatus(regionObj) {
+            let hasRocket = false, hasDroneAlert = false, hasDroneDanger = false;
+            let hasExplicitCancel = false;
+            for (const chanStatus of Object.values(regionObj)) {
+                if (chanStatus.rocketDanger) hasRocket = true;
+                if (chanStatus.droneAlert) hasDroneAlert = true;
+                if (chanStatus.droneDanger) hasDroneDanger = true;
+                if (chanStatus.explicitCancel) hasExplicitCancel = true;
+            }
+            // Конфликт: есть тревога и явный отбой хотя бы от одного канала -> отбой
+            if (hasExplicitCancel && (hasRocket || hasDroneAlert || hasDroneDanger)) {
+                return { rocketDanger: false, droneAlert: false, droneDanger: false };
+            }
+            return { rocketDanger: hasRocket, droneAlert: hasDroneAlert, droneDanger: hasDroneDanger };
+        }
+        
+        // ---------------------- ОБНОВЛЕНИЕ КАРТЫ И ПОПАПОВ ------------------
         function updateMapAndPanel() {
             if (!polygonsLayer) return;
             polygonsLayer.eachLayer(layer => {
                 const geoName = layer.regionName;
                 if (!geoName) return;
                 const normName = normalizeRegionName(geoName);
-                const status = regionStatus[normName] || initialStatus();
-                layer.setStyle({ fillColor: getFillColor(status), fillOpacity: 0.7 });
-                const popup = layer.getPopup();
-                if (popup) popup.setContent(getPopupContent(normName, status));
+                const regObj = regionStatus[normName];
+                if (regObj) {
+                    const effective = getEffectiveStatus(regObj);
+                    layer.setStyle({ fillColor: getFillColor(effective), fillOpacity: 0.7 });
+                    const popup = layer.getPopup();
+                    if (popup) popup.setContent(getPopupContent(normName, effective));
+                } else {
+                    // регион есть в GeoJSON, но нет в алиасах – оставляем серым
+                    layer.setStyle({ fillColor: colors.clear, fillOpacity: 0.7 });
+                }
             });
             updateAlertsPanel();
         }
         
-        function getFillColor(status) {
-            if (status.rocketDanger) return colors.rocket;
-            if (status.droneAlert) return colors.droneAlert;
-            if (status.droneDanger) return colors.droneDanger;
+        function getFillColor(effective) {
+            if (effective.rocketDanger) return colors.rocket;
+            if (effective.droneAlert) return colors.droneAlert;
+            if (effective.droneDanger) return colors.droneDanger;
             return colors.clear;
         }
         
-        function getPopupContent(regionName, status) {
+        function getPopupContent(regionName, effective) {
             let text = "", color = "";
-            if (status.rocketDanger) { text = "🟤 РАКЕТНАЯ ОПАСНОСТЬ! Укрытие!"; color = "#ffaaaa"; }
-            else if (status.droneAlert) { text = "🔴 ТРЕВОГА БПЛА! Фиксация / Работа ПВО"; color = "#ff8888"; }
-            else if (status.droneDanger) { text = "🟡 Опасность БПЛА в регионе"; color = "#ffc107"; }
+            if (effective.rocketDanger) { text = "🟤 РАКЕТНАЯ ОПАСНОСТЬ! Укрытие!"; color = "#ffaaaa"; }
+            else if (effective.droneAlert) { text = "🔴 ТРЕВОГА БПЛА! Фиксация / Работа ПВО"; color = "#ff8888"; }
+            else if (effective.droneDanger) { text = "🟡 Опасность БПЛА в регионе"; color = "#ffc107"; }
             else { text = "⚪ Отбой / Спокойно"; color = "#adb5bd"; }
             return `<div style="font-family:'Segoe UI';min-width:160px;"><b>${regionName}</b><br><span style="color:${color}">${text}</span></div>`;
         }
@@ -520,10 +547,11 @@
         function updateAlertsPanel() {
             const panelDiv = document.getElementById('panelContent');
             const active = [];
-            for (const [region, status] of Object.entries(regionStatus)) {
-                if (status.rocketDanger) active.push({ name: region, type: 'rocket', label: '🟤 Ракетная опасность', priority: 1 });
-                else if (status.droneAlert) active.push({ name: region, type: 'droneAlert', label: '🔴 Тревога БПЛА (фиксация/ПВО)', priority: 2 });
-                else if (status.droneDanger) active.push({ name: region, type: 'droneDanger', label: '🟡 Опасность БПЛА', priority: 3 });
+            for (const [region, chanObj] of Object.entries(regionStatus)) {
+                const eff = getEffectiveStatus(chanObj);
+                if (eff.rocketDanger) active.push({ name: region, type: 'rocket', label: '🟤 Ракетная опасность', priority: 1 });
+                else if (eff.droneAlert) active.push({ name: region, type: 'droneAlert', label: '🔴 Тревога БПЛА (фиксация/ПВО)', priority: 2 });
+                else if (eff.droneDanger) active.push({ name: region, type: 'droneDanger', label: '🟡 Опасность БПЛА', priority: 3 });
             }
             if (active.length === 0) {
                 panelDiv.innerHTML = '<div class="empty-message">✨ Нет активных тревог</div>';
@@ -538,17 +566,18 @@
             `).join('');
         }
         
-        // ---------------------- КОПИРОВАНИЕ ------------------
+        // ---------------------- КОПИРОВАНИЕ СПИСКА ------------------
         function getCurrentDateTimeString() {
             const now = new Date();
             return `${now.getDate().toString().padStart(2,'0')}.${(now.getMonth()+1).toString().padStart(2,'0')}.${now.getFullYear()} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
         }
         async function copyAlertsList() {
             const active = [];
-            for (const [region, status] of Object.entries(regionStatus)) {
-                if (status.rocketDanger) active.push({ name: region, label: '🟤 Ракетная опасность', priority: 1 });
-                else if (status.droneAlert) active.push({ name: region, label: '🔴 Тревога БПЛА (фиксация/работа ПВО)', priority: 2 });
-                else if (status.droneDanger) active.push({ name: region, label: '🟡 Опасность БПЛА', priority: 3 });
+            for (const [region, chanObj] of Object.entries(regionStatus)) {
+                const eff = getEffectiveStatus(chanObj);
+                if (eff.rocketDanger) active.push({ name: region, label: '🟤 Ракетная опасность', priority: 1 });
+                else if (eff.droneAlert) active.push({ name: region, label: '🔴 Тревога БПЛА (фиксация/работа ПВО)', priority: 2 });
+                else if (eff.droneDanger) active.push({ name: region, label: '🟡 Опасность БПЛА', priority: 3 });
             }
             if (active.length === 0) { showToast("✨ Нет активных тревог"); return; }
             active.sort((a,b) => a.priority - b.priority);
@@ -564,42 +593,63 @@
             document.body.appendChild(toast); setTimeout(() => toast.remove(), 2000);
         }
         
-        // ---------------------- ОБНОВЛЕНИЕ ТРЕВОГ ------------------
+        // ---------------------- ИНКРЕМЕНТАЛЬНОЕ ОБНОВЛЕНИЕ ------------------
         async function refreshAlerts() {
             const statusDiv = document.getElementById('status');
             statusDiv.innerHTML = '🔄 Обновление...';
             try {
-                const posts = await fetchPosts();
-                if (!posts.length) throw new Error("Нет постов в ленте");
-                const newPosts = posts.filter(p => p.id > lastPostId);
-                if (newPosts.length > 0) {
-                    lastPostId = posts[posts.length-1].id;
-                    let newStatus = JSON.parse(JSON.stringify(regionStatus));
-                    for (const post of newPosts) {
-                        const regions = extractRegions(post.text, allRegionNames);
-                        const event = classifyEvent(post.text);
-                        if (!event) continue;
-                        if (event.type === 'globalCancelDrone') {
-                            applyEvent([], event, newStatus);
-                            console.log(`[${channel.name}] Глобальный отбой БПЛА`);
-                        } else {
-                            if (regions.length === 0) continue;
-                            applyEvent(regions, event, newStatus);
-                            console.log(`[${channel.name}] Пост ${post.id}: ${JSON.stringify(event)} для [${regions.join(',')}]`);
+                // Создаём новую пустую структуру regionStatus (но сохраняем существующие данные для not-fallbacks?)
+                // Но мы будем обновлять инкрементально, поэтому сначала копируем старые статусы, но сбрасываем explicitCancel?
+                // Лучше: загружаем для каждого канала новые посты и обновляем channelStatus.
+                // Для начала копируем старые статусы (глубокое копирование)
+                let newRegionStatus = JSON.parse(JSON.stringify(regionStatus));
+                for (const ch of channels) {
+                    try {
+                        const posts = await fetchRSS(ch.url);
+                        if (posts.length === 0) continue;
+                        const savedId = lastPostId[ch.name] || 0;
+                        const newPosts = posts.filter(p => p.id > savedId);
+                        if (newPosts.length === 0) continue;
+                        lastPostId[ch.name] = posts[posts.length-1].id;
+                        // Создаём временный объект статусов для этого канала на основе текущего состояния
+                        let channelStatus = {};
+                        for (const reg of allRegionNames) {
+                            channelStatus[reg] = newRegionStatus[reg]?.[ch.name] ? JSON.parse(JSON.stringify(newRegionStatus[reg][ch.name])) : initialChannelStatus();
                         }
+                        // Применяем новые посты
+                        for (const post of newPosts) {
+                            const regions = extractRegions(post.text, allRegionNames);
+                            const event = classifyEvent(post.text);
+                            if (!event) continue;
+                            if (event.type === 'globalCancelDrone') {
+                                applyEvent([], event, channelStatus, ch.name);
+                                console.log(`[${ch.name}] Глобальный отбой БПЛА`);
+                            } else {
+                                if (regions.length === 0) continue;
+                                applyEvent(regions, event, channelStatus, ch.name);
+                                console.log(`[${ch.name}] Пост ${post.id}: ${JSON.stringify(event)} для [${regions.join(',')}]`);
+                            }
+                        }
+                        // Сохраняем обновлённые статусы канала в новую общую структуру
+                        for (const reg of allRegionNames) {
+                            if (!newRegionStatus[reg]) newRegionStatus[reg] = {};
+                            newRegionStatus[reg][ch.name] = channelStatus[reg];
+                        }
+                    } catch(e) {
+                        console.warn(`Ошибка при обработке канала ${ch.name}:`, e);
                     }
-                    regionStatus = newStatus;
-                    updateMapAndPanel();
-                    localStorage.setItem('regionStatus_single', JSON.stringify(regionStatus));
-                    localStorage.setItem('lastPostId_single', lastPostId);
                 }
+                regionStatus = newRegionStatus;
+                updateMapAndPanel();
                 lastUpdateTime = new Date();
+                localStorage.setItem('regionStatus', JSON.stringify(regionStatus));
+                localStorage.setItem('lastPostId', JSON.stringify(lastPostId));
                 statusDiv.innerHTML = `✅ Готово (${lastUpdateTime.toLocaleTimeString()})`;
                 setTimeout(() => { if (statusDiv.innerHTML.startsWith('✅')) statusDiv.innerHTML = `Актуально на ${lastUpdateTime.toLocaleTimeString()}`; }, 3000);
             } catch(err) {
                 console.error(err);
-                statusDiv.innerHTML = `⚠️ Ошибка: ${err.message || 'Не удалось загрузить данные'}`;
-                setTimeout(() => { if (statusDiv.innerHTML.includes('⚠️')) statusDiv.innerHTML = lastUpdateTime ? `Актуально на ${lastUpdateTime.toLocaleTimeString()}` : 'Повторите позже'; }, 4000);
+                statusDiv.innerHTML = `⚠️ Ошибка${lastUpdateTime ? ` (последнее ${lastUpdateTime.toLocaleTimeString()})` : ''}`;
+                setTimeout(() => { if (statusDiv.innerHTML.includes('⚠️')) statusDiv.innerHTML = lastUpdateTime ? `Актуально на ${lastUpdateTime.toLocaleTimeString()}` : 'Повторите'; }, 3000);
             }
         }
         
@@ -620,12 +670,16 @@
                     if (name) {
                         const norm = normalizeRegionName(name);
                         layer.regionName = norm;
-                        if (!regionStatus[norm]) regionStatus[norm] = initialStatus();
-                        const status = regionStatus[norm];
-                        layer.bindPopup(getPopupContent(norm, status), { className: 'custom-popup' });
+                        if (!regionStatus[norm]) {
+                            regionStatus[norm] = {};
+                            for (const ch of channels) regionStatus[norm][ch.name] = initialChannelStatus();
+                        }
+                        const effective = getEffectiveStatus(regionStatus[norm]);
+                        layer.bindPopup(getPopupContent(norm, effective), { className: 'custom-popup' });
                     }
                 }
             }).addTo(map);
+            // Центрируем карту по границам загруженных данных
             try {
                 map.fitBounds(polygonsLayer.getBounds());
             } catch(e) { map.setView([62, 105], 3.8); }
@@ -641,17 +695,21 @@
         }
         updateClock(); setInterval(updateClock, 60000);
         
-        const savedStatus = localStorage.getItem('regionStatus_single');
+        // Восстановление кэша
+        const savedStatus = localStorage.getItem('regionStatus');
         if (savedStatus) {
             try {
                 const parsed = JSON.parse(savedStatus);
                 for (let reg in parsed) {
-                    regionStatus[reg] = parsed[reg];
+                    if (!regionStatus[reg]) regionStatus[reg] = {};
+                    for (let ch in parsed[reg]) {
+                        regionStatus[reg][ch] = parsed[reg][ch];
+                    }
                 }
             } catch(e) {}
         }
-        const savedId = localStorage.getItem('lastPostId_single');
-        if (savedId) lastPostId = parseInt(savedId) || 0;
+        const savedIds = localStorage.getItem('lastPostId');
+        if (savedIds) { try { const p = JSON.parse(savedIds); if (p.locatorru) lastPostId.locatorru = p.locatorru; if (p.radarrussiia) lastPostId.radarrussiia = p.radarrussiia; } catch(e){} }
         
         loadPolygons();
         setTimeout(() => {
@@ -659,7 +717,6 @@
             setInterval(refreshAlerts, 45000);
         }, 2000);
         
-        // обработчики UI
         document.getElementById('updateBtn').addEventListener('click', () => refreshAlerts());
         document.getElementById('rulerBtn').addEventListener('click', () => setRulerMode(!rulerModeActive));
         document.getElementById('clearRulerBtn').addEventListener('click', () => clearRuler());
@@ -675,3 +732,4 @@
 </script>
 </body>
 </html>
+
